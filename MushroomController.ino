@@ -2,13 +2,13 @@
 #include "Config.h"
 #include "Sensor.h"
 #include "Display.h"
-#include "NetworkManager.h"
+#include "GrowNetworkManager.h"
 #include "MqttClient.h"
 
-Sensor         sensor;
-Display        display;
-NetworkManager networkManager;
-MqttClient     mqttClient;
+Sensor             sensor;
+Display            display;
+GrowNetworkManager growNetworkManager;
+MqttClient         mqttClient;
 
 void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
@@ -24,11 +24,11 @@ void setup() {
         while (true) { }
     }
 
-    networkManager.begin();
+    growNetworkManager.begin();
 
-    if (networkManager.isConnected()) {
+    if (growNetworkManager.isConnected()) {
         Serial.println("WiFi connected");
-    } else if (networkManager.isSetupMode()) {
+    } else if (growNetworkManager.isSetupMode()) {
         Serial.println("In WiFi Setup Mode — configure via SoftAP portal");
     } else {
         Serial.println("WiFi connect timed out - will keep retrying in background");
@@ -38,19 +38,19 @@ void setup() {
 }
 
 void loop() {
-    networkManager.loop();
+    growNetworkManager.loop();
 
     // Skip MQTT while the SoftAP portal is active (no LAN / broker path).
-    if (networkManager.isConnected()) {
+    if (growNetworkManager.isConnected()) {
         mqttClient.ensureConnected();
     }
 
     SensorReading reading = sensor.read();
 
     NetDisplayState netState;
-    if (networkManager.isSetupMode()) {
+    if (growNetworkManager.isSetupMode()) {
         netState = NetDisplayState::SetupMode;
-    } else if (networkManager.isConnected()) {
+    } else if (growNetworkManager.isConnected()) {
         netState = NetDisplayState::Connected;
     } else {
         netState = NetDisplayState::Connecting;
@@ -70,7 +70,7 @@ void loop() {
         display.showReadings(reading, TARGET_TEMPERATURE, TARGET_HUMIDITY,
                               netState, mqttClient.isConnected());
 
-        if (networkManager.isConnected()) {
+        if (growNetworkManager.isConnected()) {
             if (mqttClient.publishReading(reading, TARGET_TEMPERATURE, TARGET_HUMIDITY)) {
                 Serial.println("Published to MQTT");
             } else {

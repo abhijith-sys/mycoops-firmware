@@ -1,4 +1,4 @@
-#include "NetworkManager.h"
+#include "GrowNetworkManager.h"
 #include "Config.h"
 
 static const char *PREFS_NAMESPACE = "wifi";
@@ -6,7 +6,7 @@ static const char *KEY_SSID        = "wifi_ssid";
 static const char *KEY_PASSWORD    = "wifi_password";
 static const byte  DNS_PORT        = 53;
 
-NetworkManager::NetworkManager()
+GrowNetworkManager::GrowNetworkManager()
     : _server(80),
       _setupMode(false),
       _reconnectInProgress(false),
@@ -15,7 +15,7 @@ NetworkManager::NetworkManager()
       _failedAttempts(0) {
 }
 
-void NetworkManager::begin() {
+void GrowNetworkManager::begin() {
     loadCredentials();
 
     if (!hasCredentials()) {
@@ -44,7 +44,7 @@ void NetworkManager::begin() {
     }
 }
 
-void NetworkManager::loop() {
+void GrowNetworkManager::loop() {
     if (_setupMode) {
         _dns.processNextRequest();
         _server.handleClient();
@@ -59,22 +59,22 @@ void NetworkManager::loop() {
     tryReconnect();
 }
 
-bool NetworkManager::isConnected() {
+bool GrowNetworkManager::isConnected() {
     return !_setupMode && WiFi.status() == WL_CONNECTED;
 }
 
-bool NetworkManager::isSetupMode() {
+bool GrowNetworkManager::isSetupMode() {
     return _setupMode;
 }
 
-void NetworkManager::loadCredentials() {
+void GrowNetworkManager::loadCredentials() {
     _prefs.begin(PREFS_NAMESPACE, true);
     _ssid     = _prefs.getString(KEY_SSID, "");
     _password = _prefs.getString(KEY_PASSWORD, "");
     _prefs.end();
 }
 
-void NetworkManager::saveCredentials(const String &ssid, const String &password) {
+void GrowNetworkManager::saveCredentials(const String &ssid, const String &password) {
     _prefs.begin(PREFS_NAMESPACE, false);
     _prefs.putString(KEY_SSID, ssid);
     _prefs.putString(KEY_PASSWORD, password);
@@ -83,11 +83,11 @@ void NetworkManager::saveCredentials(const String &ssid, const String &password)
     _password = password;
 }
 
-bool NetworkManager::hasCredentials() const {
+bool GrowNetworkManager::hasCredentials() const {
     return _ssid.length() > 0;
 }
 
-bool NetworkManager::connectSta(unsigned long timeoutMs) {
+bool GrowNetworkManager::connectSta(unsigned long timeoutMs) {
     WiFi.mode(WIFI_STA);
     WiFi.begin(_ssid.c_str(), _password.c_str());
 
@@ -99,7 +99,7 @@ bool NetworkManager::connectSta(unsigned long timeoutMs) {
     return WiFi.status() == WL_CONNECTED;
 }
 
-void NetworkManager::tryReconnect() {
+void GrowNetworkManager::tryReconnect() {
     unsigned long now = millis();
 
     if (_reconnectInProgress) {
@@ -142,7 +142,7 @@ void NetworkManager::tryReconnect() {
     WiFi.begin(_ssid.c_str(), _password.c_str());
 }
 
-String NetworkManager::softApSsid() {
+String GrowNetworkManager::softApSsid() {
     uint8_t mac[6];
     WiFi.macAddress(mac);
     char buf[24];
@@ -150,13 +150,13 @@ String NetworkManager::softApSsid() {
     return String(buf);
 }
 
-void NetworkManager::enterSetupMode() {
+void GrowNetworkManager::enterSetupMode() {
     _setupMode           = true;
     _reconnectInProgress = false;
     startPortal();
 }
 
-void NetworkManager::startPortal() {
+void GrowNetworkManager::startPortal() {
     stopPortal();
 
     // AP+STA so WiFi.scanNetworks() works while SoftAP is up.
@@ -185,17 +185,17 @@ void NetworkManager::startPortal() {
     Serial.println(apIp);
 }
 
-void NetworkManager::stopPortal() {
+void GrowNetworkManager::stopPortal() {
     _server.stop();
     _dns.stop();
     WiFi.softAPdisconnect(true);
 }
 
-void NetworkManager::handleRoot() {
+void GrowNetworkManager::handleRoot() {
     _server.send(200, "text/html", buildPortalHtml());
 }
 
-void NetworkManager::handleSave() {
+void GrowNetworkManager::handleSave() {
     if (!_server.hasArg("ssid")) {
         _portalMessage = "SSID is required.";
         _server.send(400, "text/html", buildPortalHtml());
@@ -241,13 +241,13 @@ void NetworkManager::handleSave() {
     enterSetupMode();
 }
 
-void NetworkManager::handleNotFound() {
+void GrowNetworkManager::handleNotFound() {
     // Captive-portal probes + unknown paths → redirect to the config page.
     _server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString() + "/", true);
     _server.send(302, "text/plain", "");
 }
 
-String NetworkManager::buildPortalHtml() {
+String GrowNetworkManager::buildPortalHtml() {
     int n = WiFi.scanNetworks();
 
     String html;

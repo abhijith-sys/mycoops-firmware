@@ -91,7 +91,7 @@ The WiFi manager should automatically:
 
 ## Class Responsibilities
 
-Rename `WifiManager` to `NetworkManager`.
+Rename `WifiManager` to `GrowNetworkManager` (not `NetworkManager` — that name conflicts with ESP32 Arduino Core 3.x).
 
 Responsibilities:
 
@@ -110,11 +110,11 @@ The rest of the firmware should never interact with the WiFi library directly.
 Example:
 
 ```cpp
-networkManager.begin();
+growNetworkManager.begin();
 
-networkManager.loop();
+growNetworkManager.loop();
 
-if (networkManager.isConnected())
+if (growNetworkManager.isConnected())
 {
     mqttClient.loop();
 }
@@ -150,7 +150,7 @@ Connecting...
 
 ## Future Compatibility
 
-Design the NetworkManager so future features can be added without changing the rest of the firmware:
+Design GrowNetworkManager so future features can be added without changing the rest of the firmware:
 
 - OTA updates
 - Ethernet

@@ -23,7 +23,7 @@ backend to collect.
 | `Sensor.h` / `Sensor.cpp` | Wraps the SHT31 sensor, returns a `SensorReading` struct that can serialize itself (`fill()`) |
 | `Display.h` / `Display.cpp` | Wraps the SSD1306, renders the T/H + delta UI and WiFi status (OK / Connecting / Setup Mode) |
 | `Icons.h` | 16x16 thermometer and water-drop bitmaps |
-| `NetworkManager.h` / `NetworkManager.cpp` | Preferences-backed WiFi, SoftAP setup portal, non-blocking reconnect, fail-into-setup |
+| `GrowNetworkManager.h` / `GrowNetworkManager.cpp` | Preferences-backed WiFi, SoftAP setup portal, non-blocking reconnect, fail-into-setup (named to avoid ESP32 Core 3.x `NetworkManager`) |
 | `MqttClient.h` / `MqttClient.cpp` | Connects to the broker (with last-will/birth messages) and publishes each reading as JSON |
 | `DeviceInfo.h` / `DeviceInfo.cpp` | Adds device identity/health fields (firmware, IP, WiFi signal) to any JSON doc |
 | `wificonfig.md` | Design notes for the WiFi setup architecture |

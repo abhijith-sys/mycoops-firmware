@@ -1,14 +1,16 @@
-#ifndef NETWORK_MANAGER_H
-#define NETWORK_MANAGER_H
+#ifndef GROW_NETWORK_MANAGER_H
+#define GROW_NETWORK_MANAGER_H
 
 #include <WiFi.h>
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <Preferences.h>
 
-class NetworkManager {
+// Named GrowNetworkManager to avoid clashing with ESP32 Arduino Core 3.x
+// NetworkManager (built-in).
+class GrowNetworkManager {
 public:
-    NetworkManager();
+    GrowNetworkManager();
 
     // Load credentials, connect STA or enter SoftAP setup portal.
     void begin();
@@ -53,4 +55,4 @@ private:
     String buildPortalHtml();
 };
 
-#endif // NETWORK_MANAGER_H
+#endif // GROW_NETWORK_MANAGER_H
