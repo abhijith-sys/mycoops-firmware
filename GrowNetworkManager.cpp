@@ -12,6 +12,7 @@ GrowNetworkManager::GrowNetworkManager()
       _reconnectInProgress(false),
       _handlersRegistered(false),
       _lastReconnectAttempt(0),
+      _lastSetupStatusPrint(0),
       _failedAttempts(0) {
 }
 
@@ -48,6 +49,27 @@ void GrowNetworkManager::loop() {
     if (_setupMode) {
         _dns.processNextRequest();
         _server.handleClient();
+
+        // Remind how to open the portal (laptop must join SoftAP first).
+        unsigned long now = millis();
+        if (now - _lastSetupStatusPrint >= 5000) {
+            _lastSetupStatusPrint = now;
+            Serial.println();
+            Serial.println(F("======== WiFi SETUP (OLED: Setup Mode) ========"));
+            Serial.print(F("1) On your laptop/phone, join WiFi: "));
+            Serial.println(_apSsid);
+            Serial.println(F("2) Then open: http://192.168.4.1"));
+            Serial.print(F("SoftAP IP: "));
+            Serial.println(WiFi.softAPIP());
+            Serial.print(F("Clients on SoftAP: "));
+            Serial.println(WiFi.softAPgetStationNum());
+            if (WiFi.softAPgetStationNum() == 0) {
+                Serial.println(F("No device joined SoftAP yet — 192.168.4.1 will time out"));
+                Serial.println(F("until you leave home WiFi and connect to the SoftAP above."));
+            }
+            Serial.println(F("================================================"));
+            Serial.println();
+        }
         return;
     }
 
@@ -65,6 +87,14 @@ bool GrowNetworkManager::isConnected() {
 
 bool GrowNetworkManager::isSetupMode() {
     return _setupMode;
+}
+
+String GrowNetworkManager::setupApSsid() const {
+    return _setupMode ? _apSsid : String();
+}
+
+int GrowNetworkManager::softApClientCount() const {
+    return _setupMode ? (int)WiFi.softAPgetStationNum() : 0;
 }
 
 void GrowNetworkManager::loadCredentials() {
@@ -160,14 +190,22 @@ void GrowNetworkManager::startPortal() {
     stopPortal();
 
     // AP+STA so WiFi.scanNetworks() works while SoftAP is up.
+    WiFi.persistent(false);
     WiFi.mode(WIFI_AP_STA);
-    WiFi.disconnect();
-
-    String apSsid = softApSsid();
-    WiFi.softAP(apSsid.c_str());
+    WiFi.disconnect(false, true);
     delay(100);
 
-    IPAddress apIp = WiFi.softAPIP();
+    _apSsid = softApSsid();
+
+    IPAddress apIp(192, 168, 4, 1);
+    IPAddress gateway(192, 168, 4, 1);
+    IPAddress subnet(255, 255, 255, 0);
+    WiFi.softAPConfig(apIp, gateway, subnet);
+
+    bool apOk = WiFi.softAP(_apSsid.c_str());
+    delay(200);
+
+    apIp = WiFi.softAPIP();
     _dns.start(DNS_PORT, "*", apIp);
 
     if (!_handlersRegistered) {
@@ -177,12 +215,19 @@ void GrowNetworkManager::startPortal() {
         _handlersRegistered = true;
     }
     _server.begin();
+    _lastSetupStatusPrint = 0;  // print instructions immediately on next loop()
 
-    Serial.println("=== WiFi Setup Mode ===");
-    Serial.print("SoftAP SSID: ");
-    Serial.println(apSsid);
-    Serial.print("Portal URL:  http://");
+    Serial.println();
+    Serial.println(F("=== WiFi Setup Mode (OLED shows: Setup Mode) ==="));
+    Serial.print(F("SoftAP start: "));
+    Serial.println(apOk ? F("OK") : F("FAILED"));
+    Serial.print(F("SoftAP SSID: "));
+    Serial.println(_apSsid);
+    Serial.print(F("Portal URL:  http://"));
     Serial.println(apIp);
+    Serial.println(F("Join that SoftAP from your laptop WiFi list, then open the URL."));
+    Serial.println(F("Opening 192.168.4.1 while still on home WiFi will time out."));
+    Serial.println();
 }
 
 void GrowNetworkManager::stopPortal() {

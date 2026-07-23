@@ -22,6 +22,10 @@ public:
     bool isConnected();
     bool isSetupMode();
 
+    // SoftAP name shown while in Setup Mode (empty otherwise).
+    String setupApSsid() const;
+    int    softApClientCount() const;
+
 private:
     Preferences _prefs;
     WebServer   _server;
@@ -32,7 +36,9 @@ private:
     bool          _handlersRegistered;
     String        _ssid;
     String        _password;
+    String        _apSsid;
     unsigned long _lastReconnectAttempt;
+    unsigned long _lastSetupStatusPrint;
     int           _failedAttempts;
     String        _portalMessage;  // shown on portal after save attempt
 
