@@ -32,7 +32,7 @@ void Display::showReadings(const SensorReading &reading, float targetTemp, float
     char tempDeltaStr[10];
     char humidityDeltaStr[14];
     formatDelta(tempDeltaStr, sizeof(tempDeltaStr), tempDelta, "");
-    formatDelta(humidityDeltaStr, sizeof(humidityDeltaStr), humidityDelta, " RH");
+    formatDelta(humidityDeltaStr, sizeof(humidityDeltaStr), humidityDelta, " H");
 
     _display.clearDisplay();
     _display.setTextColor(SSD1306_WHITE);
@@ -50,15 +50,15 @@ void Display::showReadings(const SensorReading &reading, float targetTemp, float
     _display.print(tempDeltaStr);
 
     // --- Humidity row: "H 79.5%      -10.5% RH" ---
-    _display.drawBitmap(0, 34, humidityIcon, 16, 16, SSD1306_WHITE);
+    _display.drawBitmap(0, 30, humidityIcon, 16, 16, SSD1306_WHITE);
 
     _display.setTextSize(2);
-    _display.setCursor(20, 34);
+    _display.setCursor(20, 30);
     _display.print(reading.humidity, 1);
     _display.print("%");
 
     _display.setTextSize(1);
-    _display.setCursor(70, 38);
+    _display.setCursor(86, 34);
     _display.print(humidityDeltaStr);
 
     // --- Status row: "WiFi:OK  MQTT:OK" ---
