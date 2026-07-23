@@ -25,7 +25,7 @@ static void formatDelta(char *buf, size_t bufSize, float delta, const char *suff
 }
 
 void Display::showReadings(const SensorReading &reading, float targetTemp, float targetHumidity,
-                            bool wifiConnected, bool mqttConnected) {
+                            NetDisplayState netState, bool mqttConnected) {
     float tempDelta     = reading.temperature - targetTemp;
     float humidityDelta = reading.humidity - targetHumidity;
 
@@ -61,13 +61,22 @@ void Display::showReadings(const SensorReading &reading, float targetTemp, float
     _display.setCursor(86, 34);
     _display.print(humidityDeltaStr);
 
-    // --- Status row: "WiFi:OK  MQTT:OK" ---
+    // --- Status row ---
     _display.setTextSize(1);
     _display.setCursor(0, 55);
-    _display.print("WiFi:");
-    _display.print(wifiConnected ? "OK" : "--");
-    _display.print("  MQTT:");
-    _display.print(mqttConnected ? "OK" : "--");
+    switch (netState) {
+        case NetDisplayState::SetupMode:
+            _display.print("WiFi:--  Setup Mode");
+            break;
+        case NetDisplayState::Connecting:
+            _display.print("Connecting...");
+            break;
+        case NetDisplayState::Connected:
+        default:
+            _display.print("WiFi:OK  MQTT:");
+            _display.print(mqttConnected ? "OK" : "--");
+            break;
+    }
 
     _display.display();
 }

@@ -35,17 +35,17 @@
 #define SERIAL_BAUD_RATE          115200
 
 // ---------------------------------------------------------
-// WiFi
+// WiFi (credentials live in Preferences — not hardcoded)
 // ---------------------------------------------------------
-#define WIFI_SSID                 "your-wifi-ssid"
-#define WIFI_PASSWORD             "your-wifi-password"
 #define WIFI_CONNECT_TIMEOUT_MS   15000
 #define WIFI_RETRY_INTERVAL_MS    5000
+#define WIFI_MAX_FAILED_ATTEMPTS  5
+#define WIFI_SETUP_AP_PREFIX      "GrowOS-Setup-"
 
 // ---------------------------------------------------------
 // Device identity
 // ---------------------------------------------------------
-#define FIRMWARE_VERSION    "1.1.0"
+#define FIRMWARE_VERSION    "1.2.0"
 #define DEVICE_NAME          "Grow Room 1"
 #define DEVICE_TYPE          "controller"
 

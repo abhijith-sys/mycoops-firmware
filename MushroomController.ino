@@ -2,13 +2,13 @@
 #include "Config.h"
 #include "Sensor.h"
 #include "Display.h"
-#include "WifiManager.h"
+#include "NetworkManager.h"
 #include "MqttClient.h"
 
-Sensor      sensor;
-Display     display;
-WifiManager wifiManager;
-MqttClient  mqttClient;
+Sensor         sensor;
+Display        display;
+NetworkManager networkManager;
+MqttClient     mqttClient;
 
 void setup() {
     Serial.begin(SERIAL_BAUD_RATE);
@@ -24,8 +24,12 @@ void setup() {
         while (true) { }
     }
 
-    if (wifiManager.begin()) {
+    networkManager.begin();
+
+    if (networkManager.isConnected()) {
         Serial.println("WiFi connected");
+    } else if (networkManager.isSetupMode()) {
+        Serial.println("In WiFi Setup Mode — configure via SoftAP portal");
     } else {
         Serial.println("WiFi connect timed out - will keep retrying in background");
     }
@@ -34,10 +38,23 @@ void setup() {
 }
 
 void loop() {
-    wifiManager.ensureConnected();
-    mqttClient.ensureConnected();
+    networkManager.loop();
+
+    // Skip MQTT while the SoftAP portal is active (no LAN / broker path).
+    if (networkManager.isConnected()) {
+        mqttClient.ensureConnected();
+    }
 
     SensorReading reading = sensor.read();
+
+    NetDisplayState netState;
+    if (networkManager.isSetupMode()) {
+        netState = NetDisplayState::SetupMode;
+    } else if (networkManager.isConnected()) {
+        netState = NetDisplayState::Connected;
+    } else {
+        netState = NetDisplayState::Connecting;
+    }
 
     if (reading.valid) {
         Serial.print("Temperature : ");
@@ -51,12 +68,14 @@ void loop() {
         Serial.println("----------------------");
 
         display.showReadings(reading, TARGET_TEMPERATURE, TARGET_HUMIDITY,
-                              wifiManager.isConnected(), mqttClient.isConnected());
+                              netState, mqttClient.isConnected());
 
-        if (mqttClient.publishReading(reading, TARGET_TEMPERATURE, TARGET_HUMIDITY)) {
-            Serial.println("Published to MQTT");
-        } else {
-            Serial.println("MQTT publish skipped (broker not connected)");
+        if (networkManager.isConnected()) {
+            if (mqttClient.publishReading(reading, TARGET_TEMPERATURE, TARGET_HUMIDITY)) {
+                Serial.println("Published to MQTT");
+            } else {
+                Serial.println("MQTT publish skipped (broker not connected)");
+            }
         }
     } else {
         Serial.println("Sensor read failed");
