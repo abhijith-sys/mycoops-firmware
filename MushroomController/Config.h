@@ -21,9 +21,6 @@
 
 // ---------------------------------------------------------
 // Target conditions for the current growth stage
-// (used to calculate the +/- delta shown on screen)
-// Default values below are typical for oyster mushroom fruiting.
-// Change these as you move between incubation / fruiting stages.
 // ---------------------------------------------------------
 #define TARGET_TEMPERATURE  28.0f   // deg C
 #define TARGET_HUMIDITY     90.0f   // % RH
@@ -45,17 +42,17 @@
 // ---------------------------------------------------------
 // Device identity
 // ---------------------------------------------------------
-#define FIRMWARE_VERSION    "1.2.1"
+#define FIRMWARE_VERSION    "1.3.0"
 #define DEVICE_NAME          "Grow Room 1"
 #define DEVICE_TYPE          "controller"
 
 // ---------------------------------------------------------
-// MQTT
+// MQTT (host/port/credentials live in Preferences via SoftAP)
 // ---------------------------------------------------------
-// Point this at your Mosquitto broker (e.g. Raspberry Pi IP) or a
-// managed broker (HiveMQ Cloud, EMQX Cloud, etc.)
-#define MQTT_BROKER               "192.168.1.50"
-#define MQTT_PORT                 1883
+#define MQTT_DEFAULT_PORT_LOCAL   1883
+#define MQTT_DEFAULT_PORT_CLOUD   8883
+#define MQTT_BACKEND_HEALTH_PORT  4000
+#define MQTT_TEST_TIMEOUT_MS      8000
 #define MQTT_CLIENT_ID            "mushroom-unit-1"
 #define DEVICE_ID                 "unit1"
 #define MQTT_RETRY_INTERVAL_MS    5000

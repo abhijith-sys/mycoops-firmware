@@ -1,122 +1,70 @@
-# WiFi Configuration Architecture
+# WiFi + MQTT Configuration Architecture
 
-Replace the current hardcoded WiFi credentials with a professional first-time setup flow similar to commercial IoT devices.
+Production SoftAP provisioning for GrowOS / MushroomController.
 
 ## Goals
 
-- Never hardcode WiFi credentials in the firmware.
-- Store WiFi credentials in ESP32 flash memory using the `Preferences` library.
-- On first boot (or if no valid credentials exist), automatically enter WiFi Setup Mode.
-- If connection to the saved WiFi fails repeatedly, automatically return to Setup Mode.
-- The firmware should recover without requiring a USB cable or recompilation.
+- Never hardcode WiFi or MQTT broker host in the firmware binary.
+- Store WiFi + MQTT settings in ESP32 flash (`Preferences`).
+- Two-step SoftAP wizard: WiFi first, then MQTT (with live tests).
+- Local (LAN Mosquitto) and Cloud (TLS) from one firmware image.
+- Recover without USB: fail-into-setup after repeated STA failures; missing MQTT host also enters setup.
 
 ---
 
 ## Boot Flow
 
-1. Device boots.
-2. Load WiFi credentials from flash storage.
-3. If credentials exist:
-   - Attempt to connect to WiFi.
-   - If successful, continue to MQTT.
-4. If credentials do not exist:
-   - Start Setup Mode.
-5. If WiFi cannot be reached after several retries:
-   - Return to Setup Mode automatically.
+1. Device boots; load Preferences.
+2. If no WiFi → SoftAP step 1.
+3. If WiFi OK but no `mqtt_host` → SoftAP step 2 (AP+STA, keep LAN).
+4. If both OK → STA + MQTT from Preferences.
+5. If STA fails N times → SoftAP step 1.
 
 ---
 
-## Setup Mode
+## SoftAP portal
 
-When in Setup Mode, the ESP32 should:
+SSID: `GrowOS-Setup-XXXX` (MAC), IP `192.168.4.1`.
 
-- Create its own WiFi Access Point.
-- SSID format:
+| Route | Purpose |
+|-------|---------|
+| `GET /` | Step 1 or 2 HTML |
+| `POST /save-wifi` | Save WiFi, join STA, stay on SoftAP → step 2 |
+| `GET /suggest` | STA/gateway IPs + optional backend health hint |
+| `POST /test-mqtt` | MQTT CONNECT probe → `{ok,error}` |
+| `POST /test-backend` | `GET http://host:4000/health` |
+| `POST /save-mqtt` | Require MQTT test OK, save, reboot |
 
-```
-GrowOS-Setup-XXXX
-```
-
-where `XXXX` is derived from the ESP32 MAC address to make each device unique.
-
-Default AP IP:
-
-```
-192.168.4.1
-```
-
-The ESP32 should host a small configuration website.
-
----
-
-## Configuration Web Page
-
-The setup page should:
-
-- Display nearby WiFi networks (scan using `WiFi.scanNetworks()`).
-- Allow manual SSID entry if the desired network is hidden.
-- Allow password entry.
-- Save credentials to flash memory using `Preferences`.
-- Attempt connection.
-- Show success/failure.
-- Restart automatically after successful configuration.
+**Dashboard hint:** MycoMonitor `GET /api/setup/connection` returns suggested `mqtt_host` from the browser Host header. Copy **before** joining SoftAP (phone on SoftAP cannot reach the LAN dashboard).
 
 ---
 
 ## Flash Storage
 
-Use the ESP32 `Preferences` library.
-
-Store:
-
 ```
-wifi_ssid
-wifi_password
+wifi_ssid, wifi_password
+mqtt_host, mqtt_port, mqtt_user, mqtt_pass, mqtt_tls, mqtt_mode
 ```
 
-Do NOT store credentials in Config.h.
-
----
-
-## Connection Management
-
-The WiFi manager should automatically:
-
-- reconnect after connection loss
-- avoid blocking the main loop
-- retry using exponential backoff or a fixed retry interval
-- never freeze the firmware
+Do NOT store credentials in `Config.h`.
 
 ---
 
 ## Class Responsibilities
 
-Rename `WifiManager` to `GrowNetworkManager` (not `NetworkManager` — that name conflicts with ESP32 Arduino Core 3.x).
+`GrowNetworkManager` — SoftAP portal, WiFi connect/reconnect, setup gating.  
+`ProvisioningStore` — Preferences load/save.  
+`MqttClient` — broker connect (plain / TLS `setInsecure`), publish.  
 
-Responsibilities:
-
-- Load credentials
-- Save credentials
-- Connect to WiFi
-- Auto reconnect
-- Detect first boot
-- Detect invalid credentials
-- Start Setup Portal
-- Stop Setup Portal after configuration
-- Report connection status
-
-The rest of the firmware should never interact with the WiFi library directly.
+Rest of firmware never calls `WiFi.*` for provisioning (DeviceInfo may read IP/RSSI when connected).
 
 Example:
 
 ```cpp
 growNetworkManager.begin();
-
 growNetworkManager.loop();
-
-if (growNetworkManager.isConnected())
-{
-    mqttClient.loop();
+if (growNetworkManager.isConnected()) {
+    mqttClient.ensureConnected();
 }
 ```
 
@@ -124,41 +72,18 @@ if (growNetworkManager.isConnected())
 
 ## OLED Status
 
-Display connection status on the OLED.
-
-Examples:
-
 ```
-WiFi ✓
-MQTT ✓
-```
-
-or
-
-```
-WiFi ✗
-Setup Mode
-```
-
-or
-
-```
+WiFi ✓ / MQTT ✓
+WiFi ✗ / Setup Mode
 Connecting...
 ```
 
 ---
 
-## Future Compatibility
-
-Design GrowNetworkManager so future features can be added without changing the rest of the firmware:
+## Future
 
 - OTA updates
-- Ethernet
-- Static IP
-- Multiple WiFi profiles
-- Remote network diagnostics
+- Cloud TLS CA pinning (replace `setInsecure`)
 - HTTPS configuration portal
-- Device hostname
-- NTP time synchronization
-
-The network manager should be completely isolated from Sensor, Display, and MQTT classes following the Single Responsibility Principle.
+- Device hostname / NTP
+- Remote MQTT re-provisioning
