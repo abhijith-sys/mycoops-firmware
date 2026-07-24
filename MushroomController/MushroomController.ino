@@ -13,6 +13,7 @@ MqttClient         mqttClient;
 BleSensor          bleSensor;
 
 static unsigned long lastSensorMs = 0;
+static unsigned long lastBleAdvMs = 0;
 
 static const char *netStateLabel(NetDisplayState state) {
     switch (state) {
@@ -65,6 +66,10 @@ static void printOledMirror(const SensorReading &reading, NetDisplayState netSta
         Serial.print(F("  portal:http://"));
         Serial.print(WiFi.softAPIP());
     }
+    if (bleSensor.isReady()) {
+        Serial.print(F("  BLE:"));
+        Serial.print(bleSensor.deviceName());
+    }
     Serial.println();
     Serial.println(F("--------------------------------"));
 }
@@ -91,20 +96,24 @@ void setup() {
     }
     Serial.println(F("Sensor OK"));
 
+    // Start BLE before SoftAP — AP+STA often breaks advertising if BLE starts after.
+    bleSensor.begin();
+
     growNetworkManager.begin();
+
+    // SoftAP / WiFi mode changes can stop NimBLE advertising — restart it.
+    bleSensor.restartAdvertising();
 
     if (growNetworkManager.isConnected()) {
         Serial.println(F("WiFi connected — normal run"));
     } else if (growNetworkManager.isSetupMode()) {
         Serial.println(F("In WiFi Setup Mode — see SoftAP instructions above"));
+        Serial.println(F("BLE still advertises as GrowOS-XXXX (not GrowOS-Setup-XXXX)"));
     } else {
         Serial.println(F("WiFi connect timed out - will keep retrying in background"));
     }
 
     mqttClient.begin();
-
-    // BLE after WiFi so MAC suffix matches SoftAP naming (GrowOS-XXXX).
-    bleSensor.begin();
 
     lastSensorMs = millis();
 }
@@ -112,6 +121,15 @@ void setup() {
 void loop() {
     // Keep SoftAP portal responsive (do not block on long delays in Setup Mode).
     growNetworkManager.loop();
+
+    // SoftAP can silently stop BLE advertising — refresh every 30s while in setup.
+    if (growNetworkManager.isSetupMode() && bleSensor.isReady()) {
+        unsigned long nowAdv = millis();
+        if (nowAdv - lastBleAdvMs >= 30000) {
+            lastBleAdvMs = nowAdv;
+            bleSensor.restartAdvertising();
+        }
+    }
 
     if (growNetworkManager.isConnected()) {
         mqttClient.ensureConnected();

@@ -49,7 +49,7 @@
 // ---------------------------------------------------------
 // Device identity
 // ---------------------------------------------------------
-#define FIRMWARE_VERSION    "1.4.0"
+#define FIRMWARE_VERSION    "1.4.1"
 #define DEVICE_NAME          "Grow Room 1"
 #define DEVICE_TYPE          "controller"
 
