@@ -2,7 +2,9 @@
 #include "Config.h"
 #include <HTTPClient.h>
 #include <WiFiClient.h>
+#if MQTT_ENABLE_TLS
 #include <WiFiClientSecure.h>
+#endif
 #include <PubSubClient.h>
 
 static const byte DNS_PORT = 53;
@@ -339,6 +341,14 @@ void GrowNetworkManager::handleTestMqtt() {
                      "{\"ok\":false,\"error\":\"WiFi STA not connected — finish step 1 first\"}");
         return;
     }
+#if !MQTT_ENABLE_TLS
+    if (tls) {
+        _mqttTestOk = false;
+        _server.send(400, "application/json",
+                     "{\"ok\":false,\"error\":\"TLS/cloud MQTT not in this build. Rebuild with MQTT_ENABLE_TLS 1 in Config.h\"}");
+        return;
+    }
+#endif
 
     String err;
     bool ok = probeMqttConnect(host, port, user, pass, tls, err);
@@ -405,6 +415,13 @@ void GrowNetworkManager::handleSaveMqtt() {
         _server.send(400, "text/html", buildMqttPortalHtml());
         return;
     }
+#if !MQTT_ENABLE_TLS
+    if (tls || mode == "cloud") {
+        _portalMessage = "Cloud/TLS MQTT is not in this build. Rebuild with MQTT_ENABLE_TLS 1 in Config.h, or use Local mode.";
+        _server.send(400, "text/html", buildMqttPortalHtml());
+        return;
+    }
+#endif
 
     // Re-run MQTT test on save if not already OK.
     String err;
@@ -465,10 +482,20 @@ bool GrowNetworkManager::probeBackendHealth(const String &host, uint16_t port, S
 
 bool GrowNetworkManager::probeMqttConnect(const String &host, uint16_t port, const String &user,
                                           const String &pass, bool tls, String &errOut) {
+#if !MQTT_ENABLE_TLS
+    if (tls) {
+        errOut = "TLS/cloud MQTT not in this build. Rebuild with MQTT_ENABLE_TLS 1 in Config.h";
+        return false;
+    }
+#endif
+
     WiFiClient plain;
+#if MQTT_ENABLE_TLS
     WiFiClientSecure secure;
+#endif
     PubSubClient mqtt;
 
+#if MQTT_ENABLE_TLS
     if (tls) {
         secure.setInsecure();
         secure.setTimeout(MQTT_TEST_TIMEOUT_MS / 1000);
@@ -477,6 +504,10 @@ bool GrowNetworkManager::probeMqttConnect(const String &host, uint16_t port, con
         plain.setTimeout(MQTT_TEST_TIMEOUT_MS);
         mqtt.setClient(plain);
     }
+#else
+    plain.setTimeout(MQTT_TEST_TIMEOUT_MS);
+    mqtt.setClient(plain);
+#endif
     mqtt.setServer(host.c_str(), port);
     mqtt.setSocketTimeout(MQTT_TEST_TIMEOUT_MS / 1000);
 
@@ -617,17 +648,25 @@ String GrowNetworkManager::buildMqttPortalHtml() {
 
     String hostVal = _cfg.mqttHost;
     String portVal = _cfg.mqttPort ? String(_cfg.mqttPort) : String(MQTT_DEFAULT_PORT_LOCAL);
+#if MQTT_ENABLE_TLS
     String modeVal = _cfg.mqttMode.length() ? _cfg.mqttMode : "local";
+#endif
 
     html += F("<div id=suggest class=hint>Loading suggestions...</div>");
     html += F("<div id=status></div>");
     html += F("<form id=mqttForm method=POST action=/save-mqtt>");
+#if MQTT_ENABLE_TLS
     html += F("<label for=mode>Mode</label><select id=mode name=mode>");
     html += (modeVal == "cloud") ? F("<option value=local>Local (LAN Mosquitto)</option>"
                                        "<option value=cloud selected>Cloud (TLS)</option>")
                                  : F("<option value=local selected>Local (LAN Mosquitto)</option>"
                                        "<option value=cloud>Cloud (TLS)</option>");
     html += F("</select>");
+#else
+    html += F("<input type=hidden id=mode name=mode value=local>");
+    html += F("<p class=hint>Mode: Local (LAN Mosquitto). Cloud/TLS MQTT is disabled in this "
+              "build (MQTT_ENABLE_TLS=0). Rebuild with MQTT_ENABLE_TLS 1 in Config.h to enable.</p>");
+#endif
     html += F("<label for=host>MQTT host</label><input id=host name=host required value=\"");
     html += htmlEscape(hostVal);
     html += F("\" placeholder=\"192.168.x.x or broker.example.com\">");

@@ -22,12 +22,12 @@ Sketch folder: `MushroomController/` (Arduino requires folder name = `.ino` name
 | File | Purpose |
 |---|---|
 | `MushroomController.ino` | Entry point — `setup()` / `loop()` |
-| `Config.h` | Pins, targets, device identity, BLE UUIDs, timing (no hardcoded WiFi/MQTT host) |
+| `Config.h` | Pins, targets, device identity, BLE UUIDs, timing, `MQTT_ENABLE_TLS` (no hardcoded WiFi/MQTT host) |
 | `Topics.h` | MQTT topic strings |
 | `ProvisioningStore.h` / `.cpp` | Preferences: WiFi + MQTT host/port/user/pass/tls/mode |
 | `GrowNetworkManager.h` / `.cpp` | SoftAP two-step portal (WiFi → MQTT), tests, reconnect |
-| `MqttClient.h` / `.cpp` | Broker connect (plain or TLS), LWT/birth, publish JSON |
-| `BleSensor.h` / `.cpp` | BLE GATT advertise + notify live T/H (NimBLE preferred) |
+| `MqttClient.h` / `.cpp` | Broker connect (plain, or TLS when enabled), LWT/birth, publish JSON |
+| `BleSensor.h` / `.cpp` | BLE GATT advertise + notify live T/H (**NimBLE required**) |
 | `Sensor` / `Display` / `DeviceInfo` / `Icons` | Sensor, OLED, payload metadata |
 
 ## SoftAP provisioning (WiFi + MQTT)
@@ -58,6 +58,10 @@ MycoMonitor on the LAN. Copy the suggested MQTT host from the dashboard
 |---|---|---|---|
 | Local | 1883 | no | optional |
 | Cloud | 8883 | yes (`WiFiClientSecure`, `setInsecure()` for now) | username required |
+
+Cloud/TLS is **compiled out by default** (`MQTT_ENABLE_TLS 0` in `Config.h`) to save
+flash. The SoftAP portal then shows Local mode only and a rebuild hint. Set
+`MQTT_ENABLE_TLS` to `1` and reflash when you need a cloud broker.
 
 CA certificate pinning for cloud TLS is a follow-up hardening step.
 
@@ -104,8 +108,9 @@ Sent on each valid SHT31 read (`SENSOR_READ_INTERVAL_MS`). Serial prints `BLE:on
 
 ### Stack
 
-Prefers **NimBLE-Arduino** (`NimBLEDevice.h`) for WiFi coexistence; falls back
-to ESP32 Bluedroid `BLEDevice` if NimBLE is not installed.
+**NimBLE-Arduino** (`NimBLEDevice.h`) only — required for WiFi coexistence and
+flash size. There is no Bluedroid fallback; missing NimBLE fails the compile
+with an install hint.
 
 ## MQTT topics
 
@@ -118,19 +123,31 @@ to ESP32 Bluedroid `BLEDevice` if NimBLE is not installed.
 
 1. Open `MushroomController/MushroomController.ino`.
 2. Board: **ESP32 Dev Module**.
-3. In `Config.h`, set `DEVICE_ID` / `DEVICE_NAME` / targets as needed (not broker IP).
-4. Upload.
-5. Complete SoftAP steps above (or use MycoMonitor **ESP device setup** panel for the suggested host).
-6. Serial 115200: SoftAP instructions, `BLE:on GrowOS-XXXX`, `MQTT connected to host:port`, `Published to MQTT`.
+3. **Partition Scheme (required):**  
+   **Tools → Partition Scheme → `Huge APP (3MB No OTA/1MB SPIFFS)`**  
+   Default app partitions (~1.3MB) are too small for WiFi SoftAP + MQTT + BLE.
+   Alternatives if you prefer some OTA headroom later: `Minimal SPIFFS, Large APPS with OTA`
+   or `Minimal SPIFFS (1.9MB APP)`. OTA is not used by this prototype yet.
+4. In `Config.h`, set `DEVICE_ID` / `DEVICE_NAME` / targets as needed (not broker IP).
+   Leave `MQTT_ENABLE_TLS` at `0` for local Mosquitto; set to `1` only for cloud TLS.
+5. Upload.
+6. Complete SoftAP steps above (or use MycoMonitor **ESP device setup** panel for the suggested host).
+7. Serial 115200: SoftAP instructions, `BLE:on GrowOS-XXXX`, `MQTT connected to host:port`, `Published to MQTT`.
+
+### Expected flash size
+
+With **Huge APP**, **NimBLE**, and **`MQTT_ENABLE_TLS 0`**, the sketch should fit with
+headroom under the ~3MB app partition. Enabling TLS or falling back to Bluedroid
+(older builds) was a common cause of “Sketch too big” (~1.8MB vs ~1.3MB default).
 
 ## Required libraries
 
 - Adafruit GFX, SSD1306, SHT31
 - PubSubClient, ArduinoJson
-- **NimBLE-Arduino** (recommended; Library Manager: “NimBLE-Arduino” by h2zero)
+- **NimBLE-Arduino** (**required**; Library Manager: “NimBLE-Arduino” by h2zero)
 
-`Preferences`, `WebServer`, `DNSServer`, `HTTPClient`, `WiFiClientSecure` ship with the ESP32 core.
-Bluedroid BLE (`BLEDevice`) is used automatically if NimBLE is not present.
+`Preferences`, `WebServer`, `DNSServer`, `HTTPClient` ship with the ESP32 core.
+`WiFiClientSecure` is linked only when `MQTT_ENABLE_TLS` is `1`.
 
 ## Not built yet
 

@@ -1,8 +1,11 @@
 #ifndef MQTT_CLIENT_H
 #define MQTT_CLIENT_H
 
+#include "Config.h"
 #include <WiFiClient.h>
+#if MQTT_ENABLE_TLS
 #include <WiFiClientSecure.h>
+#endif
 #include <PubSubClient.h>
 #include "Sensor.h"
 
@@ -22,7 +25,9 @@ private:
     void applyTransport();
 
     WiFiClient       _wifiClient;
+#if MQTT_ENABLE_TLS
     WiFiClientSecure _secureClient;
+#endif
     PubSubClient     _mqttClient;
     unsigned long    _lastReconnectAttempt;
 

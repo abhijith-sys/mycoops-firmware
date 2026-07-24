@@ -1,5 +1,4 @@
 #include "MqttClient.h"
-#include "Config.h"
 #include "Topics.h"
 #include "DeviceInfo.h"
 #include "ProvisioningStore.h"
@@ -14,12 +13,17 @@ MqttClient::MqttClient()
 }
 
 void MqttClient::applyTransport() {
+#if MQTT_ENABLE_TLS
     if (_tls) {
         _secureClient.setInsecure();  // CA pinning is a follow-up hardening step
         _mqttClient.setClient(_secureClient);
     } else {
         _mqttClient.setClient(_wifiClient);
     }
+#else
+    // TLS not compiled in — always use plain MQTT (local Mosquitto).
+    _mqttClient.setClient(_wifiClient);
+#endif
     _mqttClient.setServer(_host.c_str(), _port);
 }
 
@@ -33,6 +37,13 @@ bool MqttClient::begin() {
     _pass = cfg.mqttPass;
     _tls  = cfg.mqttTls;
     _configured = cfg.hasMqtt();
+
+#if !MQTT_ENABLE_TLS
+    if (_tls) {
+        Serial.println(F("MQTT TLS requested in Preferences but MQTT_ENABLE_TLS=0 — using plain MQTT. Rebuild with MQTT_ENABLE_TLS 1 for cloud."));
+        _tls = false;
+    }
+#endif
 
     String prefix = String(MQTT_TOPIC_PREFIX) + DEVICE_ID;
     _sensorTopic = prefix + MQTT_TOPIC_SENSORS_SUFFIX;

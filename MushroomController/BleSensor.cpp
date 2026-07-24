@@ -4,22 +4,13 @@
 #include <cstdio>
 #include <cstring>
 
-#if __has_include(<NimBLEDevice.h>)
-#include <NimBLEDevice.h>
-#define BLE_SENSOR_USE_NIMBLE 1
-#else
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
-#define BLE_SENSOR_USE_NIMBLE 0
+#if !__has_include(<NimBLEDevice.h>)
+#error "NimBLE-Arduino is required. Install via Library Manager: NimBLE-Arduino by h2zero. Bluedroid fallback was removed to keep flash size under the app partition limit."
 #endif
 
-#if BLE_SENSOR_USE_NIMBLE
+#include <NimBLEDevice.h>
+
 static NimBLECharacteristic *s_char = nullptr;
-#else
-static BLECharacteristic *s_char = nullptr;
-#endif
 
 BleSensor::BleSensor() : _ready(false) {
     _deviceName[0] = '\0';
@@ -36,7 +27,6 @@ bool BleSensor::buildDeviceName() {
 bool BleSensor::begin() {
     buildDeviceName();
 
-#if BLE_SENSOR_USE_NIMBLE
     NimBLEDevice::init(_deviceName);
     // Prefer coexistence with STA WiFi + SoftAP when both are active.
     NimBLEDevice::setPower(ESP_PWR_LVL_P3);
@@ -54,23 +44,6 @@ bool BleSensor::begin() {
     advertising->setName(_deviceName);
     advertising->setScanResponse(true);
     advertising->start();
-#else
-    BLEDevice::init(_deviceName);
-    BLEServer *server = BLEDevice::createServer();
-    BLEService *service = server->createService(BLE_SERVICE_UUID);
-    s_char = service->createCharacteristic(
-        BLE_CHAR_UUID,
-        BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY);
-    s_char->addDescriptor(new BLE2902());
-    s_char->setValue("{}");
-    service->start();
-
-    // Device name was set in BLEDevice::init(); advertise service UUID.
-    BLEAdvertising *advertising = BLEDevice::getAdvertising();
-    advertising->addServiceUUID(BLE_SERVICE_UUID);
-    advertising->setScanResponse(true);
-    BLEDevice::startAdvertising();
-#endif
 
     _ready = (s_char != nullptr);
     Serial.print(F("BLE:"));
@@ -92,13 +65,8 @@ void BleSensor::setPayload(float temperatureC, float humidityPct) {
     snprintf(buf, sizeof(buf), "{\"t\":%.1f,\"h\":%.1f,\"id\":\"%s\"}",
              temperatureC, humidityPct, DEVICE_ID);
 
-#if BLE_SENSOR_USE_NIMBLE
     s_char->setValue(reinterpret_cast<const uint8_t *>(buf), strlen(buf));
     s_char->notify();
-#else
-    s_char->setValue(reinterpret_cast<uint8_t *>(buf), strlen(buf));
-    s_char->notify();
-#endif
 }
 
 void BleSensor::update(const SensorReading &reading) {

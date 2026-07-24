@@ -9,8 +9,9 @@ class BleSensor {
 public:
     BleSensor();
 
-    // Starts NimBLE (or Bluedroid fallback), GATT service, and advertising.
+    // Starts NimBLE GATT service and advertising.
     // Call after the SHT31 is ready. Returns false if BLE init fails.
+    // Requires NimBLE-Arduino (h2zero); compile fails if missing.
     bool begin();
 
     // Updates the readable characteristic and notifies subscribers.

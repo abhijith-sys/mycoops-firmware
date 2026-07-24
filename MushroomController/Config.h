@@ -56,6 +56,11 @@
 // ---------------------------------------------------------
 // MQTT (host/port/credentials live in Preferences via SoftAP)
 // ---------------------------------------------------------
+// Set to 1 only for cloud brokers (pulls in WiFiClientSecure / mbedTLS — large flash).
+// Local Mosquitto on 1883 works with 0 (default).
+#ifndef MQTT_ENABLE_TLS
+#define MQTT_ENABLE_TLS           0
+#endif
 #define MQTT_DEFAULT_PORT_LOCAL   1883
 #define MQTT_DEFAULT_PORT_CLOUD   8883
 #define MQTT_BACKEND_HEALTH_PORT  4000
