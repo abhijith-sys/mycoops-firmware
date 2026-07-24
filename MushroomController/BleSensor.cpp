@@ -42,7 +42,7 @@ bool BleSensor::begin() {
     NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
     advertising->addServiceUUID(BLE_SERVICE_UUID);
     advertising->setName(_deviceName);
-    advertising->setScanResponse(true);
+    // NimBLE 2.x dropped setScanResponse(bool); short GrowOS-XXXX name fits primary ADV.
     advertising->start();
 
     _ready = (s_char != nullptr);
