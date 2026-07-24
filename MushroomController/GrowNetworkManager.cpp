@@ -1,6 +1,5 @@
 #include "GrowNetworkManager.h"
 #include "Config.h"
-#include <HTTPClient.h>
 #include <WiFiClient.h>
 #if MQTT_ENABLE_TLS
 #include <WiFiClientSecure.h>
@@ -458,24 +457,37 @@ void GrowNetworkManager::handleNotFound() {
 }
 
 bool GrowNetworkManager::probeBackendHealth(const String &host, uint16_t port, String &errOut) {
-    HTTPClient http;
-    String url = "http://" + host + ":" + String(port) + "/health";
-    http.setTimeout(5000);
-    if (!http.begin(url)) {
-        errOut = "Could not start HTTP client";
+    // Plain WiFiClient only — avoid HTTPClient (ESP32 core 3.x pulls NetworkClientSecure).
+    WiFiClient client;
+    client.setTimeout(5000);
+    if (!client.connect(host.c_str(), port)) {
+        errOut = String("Could not connect to ") + host + ":" + String(port) +
+                 " — is backend running / firewall open?";
         return false;
     }
-    int code = http.GET();
-    http.end();
-    if (code == 200) {
+
+    client.print(String("GET /health HTTP/1.0\r\nHost: ") + host + "\r\nConnection: close\r\n\r\n");
+
+    unsigned long start = millis();
+    while (client.connected() && !client.available() && (millis() - start) < 5000) {
+        delay(10);
+    }
+
+    String statusLine = client.readStringUntil('\n');
+    statusLine.trim();
+    while (client.connected() || client.available()) {
+        client.read();
+    }
+    client.stop();
+
+    if (statusLine.indexOf("200") >= 0) {
         errOut = "";
         return true;
     }
-    if (code < 0) {
-        errOut = String("HTTP error ") + HTTPClient::errorToString(code) + " — is backend on " +
-                 host + ":" + String(port) + "?";
+    if (statusLine.length() == 0) {
+        errOut = String("No HTTP response from ") + host + ":" + String(port) + "/health";
     } else {
-        errOut = String("HTTP status ") + String(code) + " from " + url;
+        errOut = String("HTTP response: ") + statusLine;
     }
     return false;
 }

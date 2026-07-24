@@ -140,9 +140,18 @@ with an install hint.
 
 ### Expected flash size
 
-With **Huge APP**, **NimBLE**, and **`MQTT_ENABLE_TLS 0`**, the sketch should fit with
-headroom under the ~3MB app partition. Enabling TLS or falling back to Bluedroid
-(older builds) was a common cause of “Sketch too big” (~1.8MB vs ~1.3MB default).
+With **Huge APP**, **NimBLE**, and **`MQTT_ENABLE_TLS 0`**, the sketch (~1.3–1.4MB) fits
+under the ~3MB app partition. If Verify still shows `Maximum is 1310720`, the partition
+menu was not changed — fix Tools → Partition Scheme first.
+
+Backend health checks use plain `WiFiClient` (not `HTTPClient`) so ESP32 core 3.x does
+not pull in `NetworkClientSecure` when TLS is disabled.
+
+### Sync note
+
+If you compile from another path (e.g. `Documents\VelonixTech\Projects\mycoops-firmware`),
+copy this `MushroomController/` folder there after updates (`GrowNetworkManager.cpp`,
+`Config.h`, `BleSensor.*`, `partitions.csv`).
 
 ## Required libraries
 
@@ -150,8 +159,8 @@ headroom under the ~3MB app partition. Enabling TLS or falling back to Bluedroid
 - PubSubClient, ArduinoJson
 - **NimBLE-Arduino** (**required**; Library Manager: “NimBLE-Arduino” by h2zero)
 
-`Preferences`, `WebServer`, `DNSServer`, `HTTPClient` ship with the ESP32 core.
-`WiFiClientSecure` is linked only when `MQTT_ENABLE_TLS` is `1`.
+`Preferences`, `WebServer`, and `DNSServer` ship with the ESP32 core.
+`WiFiClientSecure` / `NetworkClientSecure` are linked only when `MQTT_ENABLE_TLS` is `1`.
 
 ## Not built yet
 
