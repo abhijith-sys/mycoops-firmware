@@ -55,6 +55,7 @@ Do NOT store credentials in `Config.h`.
 `GrowNetworkManager` — SoftAP portal, WiFi connect/reconnect, setup gating.  
 `ProvisioningStore` — Preferences load/save.  
 `MqttClient` — broker connect (plain / TLS `setInsecure`), publish.  
+`BleSensor` — NimBLE (preferred) GATT advertise `GrowOS-XXXX` + notify T/H JSON; coexists with STA/SoftAP/MQTT. UUIDs and payload: see `README.md` BLE section.
 
 Rest of firmware never calls `WiFi.*` for provisioning (DeviceInfo may read IP/RSSI when connected).
 
@@ -79,6 +80,15 @@ Connecting...
 ```
 
 ---
+
+## BLE vs SoftAP naming
+
+| Role | Name |
+|---|---|
+| SoftAP portal | `GrowOS-Setup-XXXX` |
+| BLE advertiser | `GrowOS-XXXX` |
+
+`XXXX` = last 4 hex of WiFi MAC (`mac[4]`,`mac[5]`), same as SoftAP. BLE does not replace SoftAP provisioning.
 
 ## Future
 

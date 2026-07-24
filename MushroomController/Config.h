@@ -40,9 +40,16 @@
 #define WIFI_SETUP_AP_PREFIX      "GrowOS-Setup-"
 
 // ---------------------------------------------------------
+// BLE local sensor (Chrome Web Bluetooth)
+// ---------------------------------------------------------
+#define BLE_DEVICE_NAME_PREFIX  "GrowOS-"
+#define BLE_SERVICE_UUID        "6b6a0001-7c7a-4f3e-9b2d-1e5f8a9c0d01"
+#define BLE_CHAR_UUID           "6b6a0002-7c7a-4f3e-9b2d-1e5f8a9c0d01"
+
+// ---------------------------------------------------------
 // Device identity
 // ---------------------------------------------------------
-#define FIRMWARE_VERSION    "1.3.0"
+#define FIRMWARE_VERSION    "1.4.0"
 #define DEVICE_NAME          "Grow Room 1"
 #define DEVICE_TYPE          "controller"
 

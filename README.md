@@ -1,10 +1,10 @@
 # MushroomController
 
 ESP32 firmware that reads temperature/humidity from an SHT31 sensor,
-displays it on a 128x64 SSD1306 OLED, and publishes it over MQTT for a
-backend to collect.
+displays it on a 128x64 SSD1306 OLED, publishes over MQTT, and advertises
+the same readings over BLE for a phone nearby (Chrome Web Bluetooth).
 
-**Firmware version:** 1.3.0
+**Firmware version:** 1.4.0
 
 Sketch folder: `MushroomController/` (Arduino requires folder name = `.ino` name).
 
@@ -22,11 +22,12 @@ Sketch folder: `MushroomController/` (Arduino requires folder name = `.ino` name
 | File | Purpose |
 |---|---|
 | `MushroomController.ino` | Entry point — `setup()` / `loop()` |
-| `Config.h` | Pins, targets, device identity, timing (no hardcoded WiFi/MQTT host) |
+| `Config.h` | Pins, targets, device identity, BLE UUIDs, timing (no hardcoded WiFi/MQTT host) |
 | `Topics.h` | MQTT topic strings |
 | `ProvisioningStore.h` / `.cpp` | Preferences: WiFi + MQTT host/port/user/pass/tls/mode |
 | `GrowNetworkManager.h` / `.cpp` | SoftAP two-step portal (WiFi → MQTT), tests, reconnect |
 | `MqttClient.h` / `.cpp` | Broker connect (plain or TLS), LWT/birth, publish JSON |
+| `BleSensor.h` / `.cpp` | BLE GATT advertise + notify live T/H (NimBLE preferred) |
 | `Sensor` / `Display` / `DeviceInfo` / `Icons` | Sensor, OLED, payload metadata |
 
 ## SoftAP provisioning (WiFi + MQTT)
@@ -67,6 +68,45 @@ CA certificate pinning for cloud TLS is a follow-up hardening step.
 
 Missing WiFi **or** MQTT host → Setup Mode (resume at the right step).
 
+## BLE local sensor (Chrome Web Bluetooth)
+
+Independent of WiFi/MQTT: when you are near the ESP, MycoMonitor can read
+live temperature/humidity over Bluetooth. This does **not** replace MQTT
+dashboard data — it is a local, phone-in-the-room path.
+
+### Advertising
+
+| Field | Value |
+|---|---|
+| Device name | `GrowOS-XXXX` (last 4 hex of MAC, same suffix style as SoftAP `GrowOS-Setup-XXXX`) |
+| Service UUID | `6b6a0001-7c7a-4f3e-9b2d-1e5f8a9c0d01` |
+| Characteristic UUID | `6b6a0002-7c7a-4f3e-9b2d-1e5f8a9c0d01` (read + notify) |
+
+### Notify / read payload (UTF-8 JSON)
+
+```json
+{"t":29.7,"h":79.4,"id":"unit1"}
+```
+
+- `t` — temperature °C
+- `h` — humidity % RH
+- `id` — `DEVICE_ID` from `Config.h`
+
+Sent on each valid SHT31 read (`SENSOR_READ_INTERVAL_MS`). Serial prints `BLE:on GrowOS-XXXX` at boot.
+
+### Client requirements
+
+- **Chrome only** (Android or desktop). No iOS Safari (no Web Bluetooth).
+- **HTTPS (or localhost)** required — Web Bluetooth needs a secure context.
+  Plain `http://192.168.x.x` will not expose `navigator.bluetooth`.
+- Full phone/UI and mkcert/HTTPS LAN steps: see **MycoMonitor** docs
+  (Local sensor / Connect local sensor).
+
+### Stack
+
+Prefers **NimBLE-Arduino** (`NimBLEDevice.h`) for WiFi coexistence; falls back
+to ESP32 Bluedroid `BLEDevice` if NimBLE is not installed.
+
 ## MQTT topics
 
 | Topic | Published | Contents |
@@ -81,14 +121,16 @@ Missing WiFi **or** MQTT host → Setup Mode (resume at the right step).
 3. In `Config.h`, set `DEVICE_ID` / `DEVICE_NAME` / targets as needed (not broker IP).
 4. Upload.
 5. Complete SoftAP steps above (or use MycoMonitor **ESP device setup** panel for the suggested host).
-6. Serial 115200: SoftAP instructions, `MQTT connected to host:port`, `Published to MQTT`.
+6. Serial 115200: SoftAP instructions, `BLE:on GrowOS-XXXX`, `MQTT connected to host:port`, `Published to MQTT`.
 
 ## Required libraries
 
 - Adafruit GFX, SSD1306, SHT31
 - PubSubClient, ArduinoJson
+- **NimBLE-Arduino** (recommended; Library Manager: “NimBLE-Arduino” by h2zero)
 
 `Preferences`, `WebServer`, `DNSServer`, `HTTPClient`, `WiFiClientSecure` ship with the ESP32 core.
+Bluedroid BLE (`BLEDevice`) is used automatically if NimBLE is not present.
 
 ## Not built yet
 
@@ -97,4 +139,4 @@ Missing WiFi **or** MQTT host → Setup Mode (resume at the right step).
 - OTA
 - Cloud TLS CA pinning
 
-See `wificonfig.md` for architecture notes.
+See `wificonfig.md` for architecture notes (including BLE coexistence).

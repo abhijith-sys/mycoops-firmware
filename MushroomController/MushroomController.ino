@@ -4,11 +4,13 @@
 #include "Display.h"
 #include "GrowNetworkManager.h"
 #include "MqttClient.h"
+#include "BleSensor.h"
 
 Sensor             sensor;
 Display            display;
 GrowNetworkManager growNetworkManager;
 MqttClient         mqttClient;
+BleSensor          bleSensor;
 
 static unsigned long lastSensorMs = 0;
 
@@ -100,6 +102,10 @@ void setup() {
     }
 
     mqttClient.begin();
+
+    // BLE after WiFi so MAC suffix matches SoftAP naming (GrowOS-XXXX).
+    bleSensor.begin();
+
     lastSensorMs = millis();
 }
 
@@ -133,6 +139,8 @@ void loop() {
         display.showReadings(reading, TARGET_TEMPERATURE, TARGET_HUMIDITY,
                               netState, mqttClient.isConnected());
         printOledMirror(reading, netState, mqttClient.isConnected());
+
+        bleSensor.update(reading);
 
         if (growNetworkManager.isConnected()) {
             if (mqttClient.publishReading(reading, TARGET_TEMPERATURE, TARGET_HUMIDITY)) {
