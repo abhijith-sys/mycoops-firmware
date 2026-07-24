@@ -123,11 +123,15 @@ with an install hint.
 
 1. Open `MushroomController/MushroomController.ino`.
 2. Board: **ESP32 Dev Module**.
-3. **Partition Scheme (required):**  
-   **Tools → Partition Scheme → `Huge APP (3MB No OTA/1MB SPIFFS)`**  
-   Default app partitions (~1.3MB) are too small for WiFi SoftAP + MQTT + BLE.
-   Alternatives if you prefer some OTA headroom later: `Minimal SPIFFS, Large APPS with OTA`
-   or `Minimal SPIFFS (1.9MB APP)`. OTA is not used by this prototype yet.
+3. **Partition Scheme (required — this is why “105% / Sketch too big” happens):**  
+   Look at the compile line `Maximum is 1310720 bytes` — that means you are still on the **default** partition.  
+   Change it before Verify:
+   - **Tools → Partition Scheme → `Huge APP (3MB No OTA/1MB SPIFFS)`**  
+   After that, Maximum should be about **3145728** bytes (~3MB), and ~1.38MB will fit.  
+   Also confirm **Tools → Flash Size → 4MB (32Mb)**.  
+   A `partitions.csv` is in the sketch folder for Custom partition schemes if your board menu offers one.  
+   Alternatives: `Minimal SPIFFS (1.9MB APP)` also works for this sketch size.  
+   OTA is not used by this prototype yet.
 4. In `Config.h`, set `DEVICE_ID` / `DEVICE_NAME` / targets as needed (not broker IP).
    Leave `MQTT_ENABLE_TLS` at `0` for local Mosquitto; set to `1` only for cloud TLS.
 5. Upload.
