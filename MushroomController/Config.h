@@ -25,6 +25,23 @@
 #define TARGET_TEMPERATURE  28.0f   // deg C
 #define TARGET_HUMIDITY     90.0f   // % RH
 
+// How far from target still counts as "ideal" (green).
+#define CLIMATE_TEMP_TOLERANCE_C   1.0f
+#define CLIMATE_HUM_TOLERANCE_PCT  5.0f
+
+// ---------------------------------------------------------
+// Status LEDs — 4 total (active HIGH → resistor → LED → GND)
+// Temp:  green GPIO12 / red GPIO13
+// Hum:   green GPIO14 / red GPIO15
+// Ideal band = target ± tolerance below. Out of range → that pair's red ON.
+// Same outputs can later drive relay modules — never mains directly.
+// Note: GPIO 12 is a strapping pin — do not pull it HIGH at boot.
+// ---------------------------------------------------------
+#define TEMP_LED_GREEN_PIN  12
+#define TEMP_LED_RED_PIN    13
+#define HUM_LED_GREEN_PIN   14
+#define HUM_LED_RED_PIN     15
+
 // ---------------------------------------------------------
 // Timing
 // ---------------------------------------------------------
@@ -49,7 +66,7 @@
 // ---------------------------------------------------------
 // Device identity
 // ---------------------------------------------------------
-#define FIRMWARE_VERSION    "1.4.1"
+#define FIRMWARE_VERSION    "1.5.1"
 #define DEVICE_NAME          "Grow Room 1"
 #define DEVICE_TYPE          "controller"
 

@@ -5,12 +5,14 @@
 #include "GrowNetworkManager.h"
 #include "MqttClient.h"
 #include "BleSensor.h"
+#include "StatusOutputs.h"
 
 Sensor             sensor;
 Display            display;
 GrowNetworkManager growNetworkManager;
 MqttClient         mqttClient;
 BleSensor          bleSensor;
+StatusOutputs      statusOutputs;
 
 static unsigned long lastSensorMs = 0;
 static unsigned long lastBleAdvMs = 0;
@@ -96,6 +98,8 @@ void setup() {
     }
     Serial.println(F("Sensor OK"));
 
+    statusOutputs.begin();
+
     // Start BLE before SoftAP — AP+STA often breaks advertising if BLE starts after.
     bleSensor.begin();
 
@@ -158,6 +162,7 @@ void loop() {
                               netState, mqttClient.isConnected());
         printOledMirror(reading, netState, mqttClient.isConnected());
 
+        statusOutputs.update(reading, TARGET_TEMPERATURE, TARGET_HUMIDITY);
         bleSensor.update(reading);
 
         if (growNetworkManager.isConnected()) {
@@ -170,5 +175,6 @@ void loop() {
     } else {
         Serial.println(F("Sensor read failed"));
         display.showError("Sensor Error");
+        statusOutputs.update(reading, TARGET_TEMPERATURE, TARGET_HUMIDITY);
     }
 }

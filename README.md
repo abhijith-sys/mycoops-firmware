@@ -4,7 +4,7 @@ ESP32 firmware that reads temperature/humidity from an SHT31 sensor,
 displays it on a 128x64 SSD1306 OLED, publishes over MQTT, and advertises
 the same readings over BLE for a phone nearby (Chrome Web Bluetooth).
 
-**Firmware version:** 1.4.0
+**Firmware version:** 1.5.1
 
 Sketch folder: `MushroomController/` (Arduino requires folder name = `.ino` name).
 
@@ -28,7 +28,33 @@ Sketch folder: `MushroomController/` (Arduino requires folder name = `.ino` name
 | `GrowNetworkManager.h` / `.cpp` | SoftAP two-step portal (WiFi → MQTT), tests, reconnect |
 | `MqttClient.h` / `.cpp` | Broker connect (plain, or TLS when enabled), LWT/birth, publish JSON |
 | `BleSensor.h` / `.cpp` | BLE GATT advertise + notify live T/H (**NimBLE required**) |
+| `StatusOutputs.h` / `.cpp` | Green/red climate LEDs (GPIO 12/13); helpers for future relays |
 | `Sensor` / `Display` / `DeviceInfo` / `Icons` | Sensor, OLED, payload metadata |
+
+## Status LEDs (4 LEDs)
+
+| Metric | Green | Red | Meaning |
+|---|---|---|---|
+| **Temperature** | **GPIO 12** | **GPIO 13** | Green = in ideal band; red = too hot or too cold |
+| **Humidity** | **GPIO 14** | **GPIO 15** | Green = in ideal band; red = too high or too low |
+
+Ideal band uses `TARGET_TEMPERATURE` / `TARGET_HUMIDITY` plus tolerances in `Config.h`
+(`CLIMATE_TEMP_TOLERANCE_C` = 1 °C, `CLIMATE_HUM_TOLERANCE_PCT` = 5 % RH).
+
+Wiring each LED (active HIGH): `GPIO → 220Ω–1kΩ resistor → LED anode`, cathode → GND.
+
+**GPIO 12 is a strapping pin** — do not leave it pulled HIGH at boot.
+
+### Future humidifier / cooler (same logic, not LEDs)
+
+Yes — you can reuse this control path later. Do **not** connect a humidifier
+mains wire to the ESP. Use a **relay module** (or SSR) with optocoupler/transistor:
+
+- `needsHumidifier()` is true when humidity is **below** the ideal band → relay ON  
+- `needsCooling()` is true when temperature is **above** the ideal band → cooler/exhaust ON  
+
+Next firmware step would add dedicated relay pins driven from those flags, with a
+failsafe OFF when the sensor read fails.
 
 ## SoftAP provisioning (WiFi + MQTT)
 
@@ -164,7 +190,7 @@ copy this `MushroomController/` folder there after updates (`GrowNetworkManager.
 
 ## Not built yet
 
-- MQTT commands / relays
+- MQTT commands / humidifier–cooler relays (LED logic is ready via `StatusOutputs`)
 - Runtime target changes over MQTT
 - OTA
 - Cloud TLS CA pinning
