@@ -1,5 +1,4 @@
 #include "ProvisioningStore.h"
-#include "Config.h"
 
 void ProvisioningStore::load(ProvisioningConfig &out) {
     Preferences prefs;
@@ -10,9 +9,17 @@ void ProvisioningStore::load(ProvisioningConfig &out) {
     out.mqttPort     = (uint16_t)prefs.getUShort("mqtt_port", 0);
     out.mqttUser     = prefs.getString("mqtt_user", "");
     out.mqttPass     = prefs.getString("mqtt_pass", "");
+    out.mqttPath     = prefs.getString("mqtt_path", MQTT_DEFAULT_WS_PATH);
     out.mqttTls      = prefs.getBool("mqtt_tls", false);
     out.mqttMode     = prefs.getString("mqtt_mode", "local");
     prefs.end();
+
+    if (out.mqttPath.length() == 0) {
+        out.mqttPath = MQTT_DEFAULT_WS_PATH;
+    }
+    if (!out.mqttPath.startsWith("/")) {
+        out.mqttPath = String("/") + out.mqttPath;
+    }
 
     if (out.mqttPort == 0 && out.mqttHost.length() > 0) {
         out.mqttPort = out.mqttTls ? MQTT_DEFAULT_PORT_CLOUD : MQTT_DEFAULT_PORT_LOCAL;
@@ -31,7 +38,8 @@ void ProvisioningStore::saveWifi(const String &ssid, const String &password) {
 }
 
 void ProvisioningStore::saveMqtt(const String &host, uint16_t port, const String &user,
-                                 const String &pass, bool tls, const String &mode) {
+                                 const String &pass, bool tls, const String &mode,
+                                 const String &path) {
     Preferences prefs;
     prefs.begin(NAMESPACE, false);
     prefs.putString("mqtt_host", host);
@@ -40,5 +48,10 @@ void ProvisioningStore::saveMqtt(const String &host, uint16_t port, const String
     prefs.putString("mqtt_pass", pass);
     prefs.putBool("mqtt_tls", tls);
     prefs.putString("mqtt_mode", mode);
+    String p = path.length() ? path : String(MQTT_DEFAULT_WS_PATH);
+    if (!p.startsWith("/")) {
+        p = String("/") + p;
+    }
+    prefs.putString("mqtt_path", p);
     prefs.end();
 }

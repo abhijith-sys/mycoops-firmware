@@ -4,7 +4,7 @@ ESP32 firmware that reads temperature/humidity from an SHT31 sensor,
 displays it on a 128x64 SSD1306 OLED, publishes over MQTT, and advertises
 the same readings over BLE for a phone nearby (Chrome Web Bluetooth).
 
-**Firmware version:** 1.5.1
+**Firmware version:** 1.6.0
 
 Sketch folder: `MushroomController/` (Arduino requires folder name = `.ino` name).
 
@@ -22,7 +22,7 @@ Sketch folder: `MushroomController/` (Arduino requires folder name = `.ino` name
 | File | Purpose |
 |---|---|
 | `MushroomController.ino` | Entry point — `setup()` / `loop()` |
-| `Config.h` | Pins, targets, device identity, BLE UUIDs, timing, `MQTT_ENABLE_TLS` (no hardcoded WiFi/MQTT host) |
+| `Config.h` | Pins, targets, device identity, BLE UUIDs, timing, `MQTT_ENABLE_CLOUD_WSS` (no hardcoded WiFi/MQTT host) |
 | `Topics.h` | MQTT topic strings |
 | `ProvisioningStore.h` / `.cpp` | Preferences: WiFi + MQTT host/port/user/pass/tls/mode |
 | `GrowNetworkManager.h` / `.cpp` | SoftAP two-step portal (WiFi → MQTT), tests, reconnect |
@@ -72,29 +72,33 @@ MycoMonitor on the LAN. Copy the suggested MQTT host from the dashboard
 
 1. Join SoftAP `GrowOS-Setup-XXXX` → open `http://192.168.4.1`.
 2. **Step 1 — WiFi:** pick SSID, password, Connect. SoftAP stays up; device joins STA.
-3. **Step 2 — MQTT:** Local or Cloud mode, host/port/(user/pass).
+3. **Step 2 — MQTT:** Local or Cloud mode, host/port/path/(user/pass).
    - `GET /suggest` — gateway IP + optional backend `/health` probe
-   - **Test MQTT** — real CONNECT to the broker
+   - **Test MQTT** — real CONNECT to the broker (TCP local or WSS cloud)
    - **Test backend** (local) — `GET http://{host}:4000/health`
 4. **Save & Finish** — requires a successful MQTT test (re-runs on save if needed), then reboot.
 
 ### Local vs cloud
 
-| Mode | Port default | TLS | Auth |
+| Mode | Port default | Transport | Auth |
 |---|---|---|---|
-| Local | 1883 | no | optional |
-| Cloud | 8883 | yes (`WiFiClientSecure`, `setInsecure()` for now) | username required |
+| Local | 1883 | Plain MQTT TCP (`PubSubClient`) | optional |
+| Cloud | 443 | WSS `wss://host:443/mqtt` (`PsychicMqttClient`) | optional |
 
-Cloud/TLS is **compiled out by default** (`MQTT_ENABLE_TLS 0` in `Config.h`) to save
-flash. The SoftAP portal then shows Local mode only and a rebuild hint. Set
-`MQTT_ENABLE_TLS` to `1` and reflash when you need a cloud broker.
+Cloud WSS is **on by default** (`MQTT_ENABLE_CLOUD_WSS 1` in `Config.h`) for Cloudflare
+Tunnel setups. Set it to `0` for a smaller local-only flash image (SoftAP then shows
+Local mode only).
 
-CA certificate pinning for cloud TLS is a follow-up hardening step.
+Requires Arduino library **PsychicMqttClient** (elims). CA validation uses the Arduino
+root bundle (Cloudflare / Let's Encrypt). Explicit CA pinning is a follow-up.
+
+**Cloudflare Tunnel:** public hostname must be an **HTTP** service → `http://localhost:9002`
+(Compose maps host 9002 → Mosquitto websockets `:9001`), **not** TCP → `:1883`. Client path: `/mqtt`.
 
 ### Preferences keys
 
 `wifi_ssid`, `wifi_password`, `mqtt_host`, `mqtt_port`, `mqtt_user`,
-`mqtt_pass`, `mqtt_tls`, `mqtt_mode`.
+`mqtt_pass`, `mqtt_path`, `mqtt_tls`, `mqtt_mode`.
 
 Missing WiFi **or** MQTT host → Setup Mode (resume at the right step).
 
@@ -159,19 +163,20 @@ with an install hint.
    Alternatives: `Minimal SPIFFS (1.9MB APP)` also works for this sketch size.  
    OTA is not used by this prototype yet.
 4. In `Config.h`, set `DEVICE_ID` / `DEVICE_NAME` / targets as needed (not broker IP).
-   Leave `MQTT_ENABLE_TLS` at `0` for local Mosquitto; set to `1` only for cloud TLS.
+   Leave `MQTT_ENABLE_CLOUD_WSS` at `1` for Cloudflare WSS; set to `0` for local-only (smaller flash).
 5. Upload.
 6. Complete SoftAP steps above (or use MycoMonitor **ESP device setup** panel for the suggested host).
-7. Serial 115200: SoftAP instructions, `BLE:on GrowOS-XXXX`, `MQTT connected to host:port`, `Published to MQTT`.
+7. Serial 115200: SoftAP instructions, `BLE:on GrowOS-XXXX`, `MQTT connected to …`, `Published to MQTT`.
 
 ### Expected flash size
 
-With **Huge APP**, **NimBLE**, and **`MQTT_ENABLE_TLS 0`**, the sketch (~1.3–1.4MB) fits
-under the ~3MB app partition. If Verify still shows `Maximum is 1310720`, the partition
+With **Huge APP**, **NimBLE**, and **`MQTT_ENABLE_CLOUD_WSS 0`**, the sketch (~1.3–1.4MB) fits
+under the ~3MB app partition. With WSS enabled (~mbedTLS), expect a larger binary — still
+within Huge APP. If Verify still shows `Maximum is 1310720`, the partition
 menu was not changed — fix Tools → Partition Scheme first.
 
 Backend health checks use plain `WiFiClient` (not `HTTPClient`) so ESP32 core 3.x does
-not pull in `NetworkClientSecure` when TLS is disabled.
+not pull in `NetworkClientSecure` for the local health probe.
 
 ### Sync note
 
@@ -184,15 +189,16 @@ copy this `MushroomController/` folder there after updates (`GrowNetworkManager.
 - Adafruit GFX, SSD1306, SHT31
 - PubSubClient, ArduinoJson
 - **NimBLE-Arduino** (**required**; Library Manager: “NimBLE-Arduino” by h2zero)
+- **PsychicMqttClient** (required when `MQTT_ENABLE_CLOUD_WSS 1`; Library Manager / [GitHub elims](https://github.com/theelims/PsychicMqttClient))
 
 `Preferences`, `WebServer`, and `DNSServer` ship with the ESP32 core.
-`WiFiClientSecure` / `NetworkClientSecure` are linked only when `MQTT_ENABLE_TLS` is `1`.
+PsychicMqttClient / ESP-IDF MQTT + TLS are linked when `MQTT_ENABLE_CLOUD_WSS` is `1`.
 
 ## Not built yet
 
 - MQTT commands / humidifier–cooler relays (LED logic is ready via `StatusOutputs`)
 - Runtime target changes over MQTT
 - OTA
-- Cloud TLS CA pinning
+- Cloud WSS CA pinning (currently Arduino CA bundle)
 
 See `wificonfig.md` for architecture notes (including BLE coexistence).

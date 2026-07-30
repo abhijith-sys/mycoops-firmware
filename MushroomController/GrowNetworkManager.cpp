@@ -1,10 +1,10 @@
 #include "GrowNetworkManager.h"
 #include "Config.h"
 #include <WiFiClient.h>
-#if MQTT_ENABLE_TLS
-#include <WiFiClientSecure.h>
-#endif
 #include <PubSubClient.h>
+#if MQTT_ENABLE_CLOUD_WSS
+#include <PsychicMqttClient.h>
+#endif
 
 static const byte DNS_PORT = 53;
 
@@ -326,7 +326,9 @@ void GrowNetworkManager::handleTestMqtt() {
     String user = _server.hasArg("user") ? _server.arg("user") : "";
     String pass = _server.hasArg("pass") ? _server.arg("pass") : "";
     String mode = _server.hasArg("mode") ? _server.arg("mode") : "local";
-    bool tls = (mode == "cloud") || (_server.hasArg("tls") && _server.arg("tls") == "1");
+    String path = _server.hasArg("path") ? _server.arg("path") : MQTT_DEFAULT_WS_PATH;
+    path.trim();
+    bool wss = (mode == "cloud") || (_server.hasArg("tls") && _server.arg("tls") == "1");
 
     if (host.length() == 0 || port == 0) {
         _mqttTestOk = false;
@@ -340,17 +342,17 @@ void GrowNetworkManager::handleTestMqtt() {
                      "{\"ok\":false,\"error\":\"WiFi STA not connected — finish step 1 first\"}");
         return;
     }
-#if !MQTT_ENABLE_TLS
-    if (tls) {
+#if !MQTT_ENABLE_CLOUD_WSS
+    if (wss) {
         _mqttTestOk = false;
         _server.send(400, "application/json",
-                     "{\"ok\":false,\"error\":\"TLS/cloud MQTT not in this build. Rebuild with MQTT_ENABLE_TLS 1 in Config.h\"}");
+                     "{\"ok\":false,\"error\":\"Cloud WSS MQTT not in this build. Rebuild with MQTT_ENABLE_CLOUD_WSS 1 in Config.h\"}");
         return;
     }
 #endif
 
     String err;
-    bool ok = probeMqttConnect(host, port, user, pass, tls, err);
+    bool ok = probeMqttConnect(host, port, user, pass, wss, path, err);
     _mqttTestOk = ok;
     if (ok) {
         _server.send(200, "application/json", "{\"ok\":true,\"error\":\"\"}");
@@ -402,21 +404,18 @@ void GrowNetworkManager::handleSaveMqtt() {
     String user = _server.hasArg("user") ? _server.arg("user") : "";
     String pass = _server.hasArg("pass") ? _server.arg("pass") : "";
     String mode = _server.hasArg("mode") ? _server.arg("mode") : "local";
-    bool tls = (mode == "cloud");
+    String path = _server.hasArg("path") ? _server.arg("path") : MQTT_DEFAULT_WS_PATH;
+    path.trim();
+    bool wss = (mode == "cloud");
 
     if (host.length() == 0 || port == 0) {
         _portalMessage = "MQTT host and port are required.";
         _server.send(400, "text/html", buildMqttPortalHtml());
         return;
     }
-    if (mode == "cloud" && user.length() == 0) {
-        _portalMessage = "Cloud mode requires a username.";
-        _server.send(400, "text/html", buildMqttPortalHtml());
-        return;
-    }
-#if !MQTT_ENABLE_TLS
-    if (tls || mode == "cloud") {
-        _portalMessage = "Cloud/TLS MQTT is not in this build. Rebuild with MQTT_ENABLE_TLS 1 in Config.h, or use Local mode.";
+#if !MQTT_ENABLE_CLOUD_WSS
+    if (wss || mode == "cloud") {
+        _portalMessage = "Cloud WSS MQTT is not in this build. Rebuild with MQTT_ENABLE_CLOUD_WSS 1 in Config.h, or use Local mode.";
         _server.send(400, "text/html", buildMqttPortalHtml());
         return;
     }
@@ -425,7 +424,7 @@ void GrowNetworkManager::handleSaveMqtt() {
     // Re-run MQTT test on save if not already OK.
     String err;
     if (!_mqttTestOk) {
-        if (!probeMqttConnect(host, port, user, pass, tls, err)) {
+        if (!probeMqttConnect(host, port, user, pass, wss, path, err)) {
             _portalMessage = String("MQTT test failed: ") + err;
             _server.send(400, "text/html", buildMqttPortalHtml());
             return;
@@ -433,12 +432,13 @@ void GrowNetworkManager::handleSaveMqtt() {
         _mqttTestOk = true;
     }
 
-    ProvisioningStore::saveMqtt(host, port, user, pass, tls, mode);
+    ProvisioningStore::saveMqtt(host, port, user, pass, wss, mode, path);
     _cfg.mqttHost = host;
     _cfg.mqttPort = port;
     _cfg.mqttUser = user;
     _cfg.mqttPass = pass;
-    _cfg.mqttTls  = tls;
+    _cfg.mqttPath = path;
+    _cfg.mqttTls  = wss;
     _cfg.mqttMode = mode;
 
     _server.send(200, "text/html",
@@ -493,33 +493,72 @@ bool GrowNetworkManager::probeBackendHealth(const String &host, uint16_t port, S
 }
 
 bool GrowNetworkManager::probeMqttConnect(const String &host, uint16_t port, const String &user,
-                                          const String &pass, bool tls, String &errOut) {
-#if !MQTT_ENABLE_TLS
-    if (tls) {
-        errOut = "TLS/cloud MQTT not in this build. Rebuild with MQTT_ENABLE_TLS 1 in Config.h";
+                                          const String &pass, bool wss, const String &path,
+                                          String &errOut) {
+#if !MQTT_ENABLE_CLOUD_WSS
+    if (wss) {
+        errOut = "Cloud WSS MQTT not in this build. Rebuild with MQTT_ENABLE_CLOUD_WSS 1 in Config.h";
+        return false;
+    }
+#else
+    if (wss) {
+        String wsPath = path.length() ? path : String(MQTT_DEFAULT_WS_PATH);
+        if (!wsPath.startsWith("/")) {
+            wsPath = String("/") + wsPath;
+        }
+        // Must outlive PsychicMqttClient::setServer (stores pointer).
+        String uri = String("wss://") + host + ":" + String(port) + wsPath;
+        String testId = String(MQTT_CLIENT_ID) + "-test";
+
+        PsychicMqttClient probe;
+        volatile bool done = false;
+        volatile bool ok = false;
+
+        probe.setServer(uri.c_str());
+        probe.setClientId(testId.c_str());
+        probe.setKeepAlive(30);
+        probe.setCleanSession(true);
+        probe.setAutoReconnect(false);
+        probe.attachArduinoCACertBundle(true);
+        if (user.length() > 0) {
+            probe.setCredentials(user.c_str(), pass.length() ? pass.c_str() : nullptr);
+        }
+        probe.onConnect([&](bool) {
+            ok = true;
+            done = true;
+        });
+        probe.onError([&](esp_mqtt_error_codes_t) {
+            ok = false;
+            done = true;
+        });
+        probe.onDisconnect([&](bool) {
+            if (!ok) {
+                done = true;
+            }
+        });
+        probe.connect();
+
+        unsigned long start = millis();
+        while (!done && (millis() - start) < (unsigned long)MQTT_TEST_TIMEOUT_MS) {
+            delay(20);
+        }
+
+        if (ok) {
+            probe.disconnect();
+            errOut = "";
+            return true;
+        }
+        probe.forceStop();
+        errOut = String("MQTT WSS connect failed to ") + uri +
+                 " — check host/path/Cloudflare tunnel → Mosquitto WS (host :9002 → :9001)";
         return false;
     }
 #endif
 
     WiFiClient plain;
-#if MQTT_ENABLE_TLS
-    WiFiClientSecure secure;
-#endif
     PubSubClient mqtt;
-
-#if MQTT_ENABLE_TLS
-    if (tls) {
-        secure.setInsecure();
-        secure.setTimeout(MQTT_TEST_TIMEOUT_MS / 1000);
-        mqtt.setClient(secure);
-    } else {
-        plain.setTimeout(MQTT_TEST_TIMEOUT_MS);
-        mqtt.setClient(plain);
-    }
-#else
     plain.setTimeout(MQTT_TEST_TIMEOUT_MS);
     mqtt.setClient(plain);
-#endif
     mqtt.setServer(host.c_str(), port);
     mqtt.setSocketTimeout(MQTT_TEST_TIMEOUT_MS / 1000);
 
@@ -537,7 +576,7 @@ bool GrowNetworkManager::probeMqttConnect(const String &host, uint16_t port, con
         return true;
     }
     errOut = String("MQTT connect failed to ") + host + ":" + String(port) +
-             (tls ? " (TLS)" : "") + " — check host/port/firewall/credentials";
+             " — check host/port/firewall/credentials";
     return false;
 }
 
@@ -627,7 +666,7 @@ String GrowNetworkManager::buildWifiPortalHtml() {
 
 String GrowNetworkManager::buildMqttPortalHtml() {
     String html;
-    html.reserve(4500);
+    html.reserve(5200);
     html += F(
         "<!DOCTYPE html><html><head>"
         "<meta name=viewport content=\"width=device-width,initial-scale=1\">"
@@ -660,32 +699,42 @@ String GrowNetworkManager::buildMqttPortalHtml() {
 
     String hostVal = _cfg.mqttHost;
     String portVal = _cfg.mqttPort ? String(_cfg.mqttPort) : String(MQTT_DEFAULT_PORT_LOCAL);
-#if MQTT_ENABLE_TLS
+    String pathVal = _cfg.mqttPath.length() ? _cfg.mqttPath : String(MQTT_DEFAULT_WS_PATH);
+#if MQTT_ENABLE_CLOUD_WSS
     String modeVal = _cfg.mqttMode.length() ? _cfg.mqttMode : "local";
 #endif
 
     html += F("<div id=suggest class=hint>Loading suggestions...</div>");
     html += F("<div id=status></div>");
     html += F("<form id=mqttForm method=POST action=/save-mqtt>");
-#if MQTT_ENABLE_TLS
+#if MQTT_ENABLE_CLOUD_WSS
     html += F("<label for=mode>Mode</label><select id=mode name=mode>");
     html += (modeVal == "cloud") ? F("<option value=local>Local (LAN Mosquitto)</option>"
-                                       "<option value=cloud selected>Cloud (TLS)</option>")
+                                       "<option value=cloud selected>Cloud (WSS / Cloudflare)</option>")
                                  : F("<option value=local selected>Local (LAN Mosquitto)</option>"
-                                       "<option value=cloud>Cloud (TLS)</option>");
+                                       "<option value=cloud>Cloud (WSS / Cloudflare)</option>");
     html += F("</select>");
 #else
     html += F("<input type=hidden id=mode name=mode value=local>");
-    html += F("<p class=hint>Mode: Local (LAN Mosquitto). Cloud/TLS MQTT is disabled in this "
-              "build (MQTT_ENABLE_TLS=0). Rebuild with MQTT_ENABLE_TLS 1 in Config.h to enable.</p>");
+    html += F("<p class=hint>Mode: Local (LAN Mosquitto). Cloud WSS MQTT is disabled in this "
+              "build (MQTT_ENABLE_CLOUD_WSS=0). Rebuild with MQTT_ENABLE_CLOUD_WSS 1 in Config.h to enable.</p>");
 #endif
     html += F("<label for=host>MQTT host</label><input id=host name=host required value=\"");
     html += htmlEscape(hostVal);
-    html += F("\" placeholder=\"192.168.x.x or broker.example.com\">");
+    html += F("\" placeholder=\"192.168.x.x or mqtt.example.com\">");
     html += F("<label for=port>MQTT port</label><input id=port name=port type=number required value=\"");
     html += portVal;
     html += F("\">");
-    html += F("<label for=user>Username (cloud / optional)</label>"
+#if MQTT_ENABLE_CLOUD_WSS
+    html += F("<label for=path>WSS path (cloud)</label><input id=path name=path value=\"");
+    html += htmlEscape(pathVal);
+    html += F("\" placeholder=\"/mqtt\">");
+#else
+    html += F("<input type=hidden id=path name=path value=\"");
+    html += htmlEscape(pathVal);
+    html += F("\">");
+#endif
+    html += F("<label for=user>Username (optional)</label>"
               "<input id=user name=user value=\"");
     html += htmlEscape(_cfg.mqttUser);
     html += F("\">");
@@ -703,8 +752,9 @@ String GrowNetworkManager::buildMqttPortalHtml() {
         "</div>"
         "<button type=submit>Save &amp; Finish</button>"
         "</form>"
-        "<p class=hint>Local: use the PC running Docker/Mosquitto (same IP as the dashboard). "
-        "Copy the suggested host from MycoMonitor before joining SoftAP if needed.</p>"
+        "<p class=hint>Local: PC running Docker/Mosquitto on port 1883. "
+        "Cloud: hostname only (e.g. mqtt.example.com), port 443, path /mqtt — "
+        "Cloudflare Tunnel must point HTTP → localhost:9002 (Compose WS port).</p>"
         "<script>"
         "const st=document.getElementById('status');"
         "function setStatus(ok,msg){st.style.color=ok?'#8f8':'#f88';st.textContent=msg;}"
@@ -727,8 +777,10 @@ String GrowNetworkManager::buildMqttPortalHtml() {
         "document.getElementById('port').value=j.suggested_mqtt_port;"
         "document.getElementById('mode').value='local';setStatus(true,'Applied suggestion');};"
         "document.getElementById('mode').onchange=()=>{"
-        "document.getElementById('port').value="
-        "document.getElementById('mode').value==='cloud'?8883:1883;};"
+        "const cloud=document.getElementById('mode').value==='cloud';"
+        "document.getElementById('port').value=cloud?443:1883;"
+        "if(cloud&&!document.getElementById('path').value){"
+        "document.getElementById('path').value='/mqtt';}};"
         "document.getElementById('btnTestMqtt').onclick=async()=>{"
         "setStatus(true,'Testing MQTT...');"
         "try{const r=await fetch('/test-mqtt',{method:'POST',"

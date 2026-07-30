@@ -7,7 +7,7 @@ Production SoftAP provisioning for GrowOS / MushroomController.
 - Never hardcode WiFi or MQTT broker host in the firmware binary.
 - Store WiFi + MQTT settings in ESP32 flash (`Preferences`).
 - Two-step SoftAP wizard: WiFi first, then MQTT (with live tests).
-- Local (LAN Mosquitto) and Cloud (TLS) from one firmware image.
+- Local (LAN Mosquitto TCP) and Cloud (WSS via Cloudflare) from one firmware image.
 - Recover without USB: fail-into-setup after repeated STA failures; missing MQTT host also enters setup.
 
 ---
@@ -31,11 +31,11 @@ SSID: `GrowOS-Setup-XXXX` (MAC), IP `192.168.4.1`.
 | `GET /` | Step 1 or 2 HTML |
 | `POST /save-wifi` | Save WiFi, join STA, stay on SoftAP → step 2 |
 | `GET /suggest` | STA/gateway IPs + optional backend health hint |
-| `POST /test-mqtt` | MQTT CONNECT probe → `{ok,error}` |
+| `POST /test-mqtt` | MQTT CONNECT probe → `{ok,error}` (TCP or WSS) |
 | `POST /test-backend` | `GET http://host:4000/health` |
 | `POST /save-mqtt` | Require MQTT test OK, save, reboot |
 
-**Dashboard hint:** MycoMonitor `GET /api/setup/connection` returns suggested `mqtt_host` from the browser Host header. Copy **before** joining SoftAP (phone on SoftAP cannot reach the LAN dashboard).
+**Dashboard hint:** MycoMonitor `GET /api/setup/connection` returns suggested `mqtt_host` from the browser Host header, plus optional `mqtt_wss_url` for cloud. Copy **before** joining SoftAP (phone on SoftAP cannot reach the LAN dashboard).
 
 ---
 
@@ -43,7 +43,7 @@ SSID: `GrowOS-Setup-XXXX` (MAC), IP `192.168.4.1`.
 
 ```
 wifi_ssid, wifi_password
-mqtt_host, mqtt_port, mqtt_user, mqtt_pass, mqtt_tls, mqtt_mode
+mqtt_host, mqtt_port, mqtt_user, mqtt_pass, mqtt_path, mqtt_tls, mqtt_mode
 ```
 
 Do NOT store credentials in `Config.h`.
@@ -54,7 +54,7 @@ Do NOT store credentials in `Config.h`.
 
 `GrowNetworkManager` — SoftAP portal, WiFi connect/reconnect, setup gating.  
 `ProvisioningStore` — Preferences load/save.  
-`MqttClient` — broker connect (plain / TLS `setInsecure`), publish.  
+`MqttClient` — local PubSubClient TCP; cloud PsychicMqttClient WSS.  
 `BleSensor` — NimBLE (preferred) GATT advertise `GrowOS-XXXX` + notify T/H JSON; coexists with STA/SoftAP/MQTT. UUIDs and payload: see `README.md` BLE section.
 
 Rest of firmware never calls `WiFi.*` for provisioning (DeviceInfo may read IP/RSSI when connected).
@@ -93,7 +93,7 @@ Connecting...
 ## Future
 
 - OTA updates
-- Cloud TLS CA pinning (replace `setInsecure`)
+- Cloud WSS CA pinning (replace Arduino CA bundle)
 - HTTPS configuration portal
 - Device hostname / NTP
 - Remote MQTT re-provisioning

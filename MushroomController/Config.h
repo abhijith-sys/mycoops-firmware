@@ -66,20 +66,26 @@
 // ---------------------------------------------------------
 // Device identity
 // ---------------------------------------------------------
-#define FIRMWARE_VERSION    "1.5.1"
+#define FIRMWARE_VERSION    "1.6.0"
 #define DEVICE_NAME          "Grow Room 1"
 #define DEVICE_TYPE          "controller"
 
 // ---------------------------------------------------------
 // MQTT (host/port/credentials live in Preferences via SoftAP)
 // ---------------------------------------------------------
-// Set to 1 only for cloud brokers (pulls in WiFiClientSecure / mbedTLS — large flash).
-// Local Mosquitto on 1883 works with 0 (default).
-#ifndef MQTT_ENABLE_TLS
-#define MQTT_ENABLE_TLS           0
+// Cloud mode uses MQTT over WebSocket Secure (WSS) via PsychicMqttClient
+// (e.g. Cloudflare Tunnel → Mosquitto :9001). Pulls in mbedTLS — large flash.
+// Set to 0 for local-only builds (PubSubClient TCP 1883 only).
+#ifndef MQTT_ENABLE_CLOUD_WSS
+#ifdef MQTT_ENABLE_TLS
+#define MQTT_ENABLE_CLOUD_WSS     MQTT_ENABLE_TLS
+#else
+#define MQTT_ENABLE_CLOUD_WSS     1
+#endif
 #endif
 #define MQTT_DEFAULT_PORT_LOCAL   1883
-#define MQTT_DEFAULT_PORT_CLOUD   8883
+#define MQTT_DEFAULT_PORT_CLOUD   443
+#define MQTT_DEFAULT_WS_PATH      "/mqtt"
 #define MQTT_BACKEND_HEALTH_PORT  4000
 #define MQTT_TEST_TIMEOUT_MS      8000
 #define MQTT_CLIENT_ID            "mushroom-unit-1"

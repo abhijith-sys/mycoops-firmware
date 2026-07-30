@@ -59,7 +59,8 @@ private:
     String htmlEscape(const String &in);
     bool   probeBackendHealth(const String &host, uint16_t port, String &errOut);
     bool   probeMqttConnect(const String &host, uint16_t port, const String &user,
-                            const String &pass, bool tls, String &errOut);
+                            const String &pass, bool wss, const String &path,
+                            String &errOut);
 };
 
 #endif // GROW_NETWORK_MANAGER_H
