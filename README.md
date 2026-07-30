@@ -83,14 +83,14 @@ MycoMonitor on the LAN. Copy the suggested MQTT host from the dashboard
 | Mode | Port default | Transport | Auth |
 |---|---|---|---|
 | Local | 1883 | Plain MQTT TCP (`PubSubClient`) | optional |
-| Cloud | 443 | WSS `wss://host:443/mqtt` (`PsychicMqttClient`) | optional |
+| Cloud | 443 | WSS `wss://host:443/mqtt` (ESP-IDF `esp_mqtt`, built into ESP32 core) | optional |
 
 Cloud WSS is **on by default** (`MQTT_ENABLE_CLOUD_WSS 1` in `Config.h`) for Cloudflare
 Tunnel setups. Set it to `0` for a smaller local-only flash image (SoftAP then shows
 Local mode only).
 
-Requires Arduino library **PsychicMqttClient** (elims). CA validation uses the Arduino
-root bundle (Cloudflare / Let's Encrypt). Explicit CA pinning is a follow-up.
+No extra MQTT-WSS library install — uses Espressif’s `mqtt_client.h` from the ESP32
+Arduino core. CA validation uses the ESP-IDF certificate bundle.
 
 **Cloudflare Tunnel:** public hostname must be an **HTTP** service → `http://localhost:9002`
 (Compose maps host 9002 → Mosquitto websockets `:9001`), **not** TCP → `:1883`. Client path: `/mqtt`.
@@ -189,16 +189,16 @@ copy this `MushroomController/` folder there after updates (`GrowNetworkManager.
 - Adafruit GFX, SSD1306, SHT31
 - PubSubClient, ArduinoJson
 - **NimBLE-Arduino** (**required**; Library Manager: “NimBLE-Arduino” by h2zero)
-- **PsychicMqttClient** (required when `MQTT_ENABLE_CLOUD_WSS 1`; Library Manager / [GitHub elims](https://github.com/theelims/PsychicMqttClient))
 
 `Preferences`, `WebServer`, and `DNSServer` ship with the ESP32 core.
-PsychicMqttClient / ESP-IDF MQTT + TLS are linked when `MQTT_ENABLE_CLOUD_WSS` is `1`.
+Cloud WSS uses Espressif **`mqtt_client.h` / `esp_mqtt`** (also part of the ESP32 core) —
+no PsychicMqttClient or other third-party MQTT-WSS library.
 
 ## Not built yet
 
 - MQTT commands / humidifier–cooler relays (LED logic is ready via `StatusOutputs`)
 - Runtime target changes over MQTT
 - OTA
-- Cloud WSS CA pinning (currently Arduino CA bundle)
+- Cloud WSS CA pinning (currently ESP-IDF CA bundle)
 
 See `wificonfig.md` for architecture notes (including BLE coexistence).

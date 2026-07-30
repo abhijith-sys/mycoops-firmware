@@ -5,7 +5,7 @@
 #include <WiFiClient.h>
 #include <PubSubClient.h>
 #if MQTT_ENABLE_CLOUD_WSS
-#include <PsychicMqttClient.h>
+#include "mqtt_client.h"
 #endif
 #include "Sensor.h"
 
@@ -26,14 +26,20 @@ private:
 #if MQTT_ENABLE_CLOUD_WSS
     void configureCloudWss();
     String buildWssUri() const;
+    void startEspMqtt();
+    void stopEspMqtt();
+    static void espMqttEventThunk(void *handler_args, esp_event_base_t base,
+                                  int32_t event_id, void *event_data);
+    void onEspMqttEvent(int32_t event_id, esp_mqtt_event_handle_t event);
 #endif
 
     WiFiClient   _wifiClient;
     PubSubClient _mqttClient;
 #if MQTT_ENABLE_CLOUD_WSS
-    PsychicMqttClient _psychic;
-    bool              _psychicStarted;
-    String            _wssUri;  // must outlive Psychic setServer(c_str)
+    esp_mqtt_client_handle_t _espClient;
+    bool                     _espStarted;
+    bool                     _espConnected;
+    String                   _wssUri;  // must outlive esp_mqtt_client config pointers
 #endif
     unsigned long _lastReconnectAttempt;
 

@@ -54,7 +54,7 @@ Do NOT store credentials in `Config.h`.
 
 `GrowNetworkManager` — SoftAP portal, WiFi connect/reconnect, setup gating.  
 `ProvisioningStore` — Preferences load/save.  
-`MqttClient` — local PubSubClient TCP; cloud PsychicMqttClient WSS.  
+`MqttClient` — local PubSubClient TCP; cloud ESP-IDF `esp_mqtt` WSS (built into ESP32 core).  
 `BleSensor` — NimBLE (preferred) GATT advertise `GrowOS-XXXX` + notify T/H JSON; coexists with STA/SoftAP/MQTT. UUIDs and payload: see `README.md` BLE section.
 
 Rest of firmware never calls `WiFi.*` for provisioning (DeviceInfo may read IP/RSSI when connected).

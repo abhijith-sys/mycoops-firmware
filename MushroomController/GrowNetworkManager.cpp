@@ -3,7 +3,8 @@
 #include <WiFiClient.h>
 #include <PubSubClient.h>
 #if MQTT_ENABLE_CLOUD_WSS
-#include <PsychicMqttClient.h>
+#include "mqtt_client.h"
+#include "esp_crt_bundle.h"
 #endif
 
 static const byte DNS_PORT = 53;
@@ -506,49 +507,68 @@ bool GrowNetworkManager::probeMqttConnect(const String &host, uint16_t port, con
         if (!wsPath.startsWith("/")) {
             wsPath = String("/") + wsPath;
         }
-        // Must outlive PsychicMqttClient::setServer (stores pointer).
+        // URI / client id must stay alive while esp_mqtt runs (stores pointers).
         String uri = String("wss://") + host + ":" + String(port) + wsPath;
         String testId = String(MQTT_CLIENT_ID) + "-test";
 
-        PsychicMqttClient probe;
-        volatile bool done = false;
-        volatile bool ok = false;
+        struct ProbeState {
+            volatile bool done;
+            volatile bool ok;
+        } state = {false, false};
 
-        probe.setServer(uri.c_str());
-        probe.setClientId(testId.c_str());
-        probe.setKeepAlive(30);
-        probe.setCleanSession(true);
-        probe.setAutoReconnect(false);
-        probe.attachArduinoCACertBundle(true);
+        esp_mqtt_client_config_t cfg = {};
+        cfg.broker.address.uri = uri.c_str();
+        cfg.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
+        cfg.credentials.client_id = testId.c_str();
         if (user.length() > 0) {
-            probe.setCredentials(user.c_str(), pass.length() ? pass.c_str() : nullptr);
-        }
-        probe.onConnect([&](bool) {
-            ok = true;
-            done = true;
-        });
-        probe.onError([&](esp_mqtt_error_codes_t) {
-            ok = false;
-            done = true;
-        });
-        probe.onDisconnect([&](bool) {
-            if (!ok) {
-                done = true;
+            cfg.credentials.username = user.c_str();
+            if (pass.length() > 0) {
+                cfg.credentials.authentication.password = pass.c_str();
             }
-        });
-        probe.connect();
+        }
+        cfg.session.keepalive = 30;
+        cfg.network.disable_auto_reconnect = true;
+
+        esp_mqtt_client_handle_t client = esp_mqtt_client_init(&cfg);
+        if (!client) {
+            errOut = "MQTT WSS init failed";
+            return false;
+        }
+
+        esp_mqtt_client_register_event(
+            client, MQTT_EVENT_ANY,
+            [](void *arg, esp_event_base_t, int32_t event_id, void *) {
+                auto *st = static_cast<ProbeState *>(arg);
+                if (event_id == MQTT_EVENT_CONNECTED) {
+                    st->ok = true;
+                    st->done = true;
+                } else if (event_id == MQTT_EVENT_ERROR || event_id == MQTT_EVENT_DISCONNECTED) {
+                    if (!st->ok) {
+                        st->done = true;
+                    }
+                }
+            },
+            &state);
+
+        if (esp_mqtt_client_start(client) != ESP_OK) {
+            esp_mqtt_client_destroy(client);
+            errOut = String("MQTT WSS start failed for ") + uri;
+            return false;
+        }
 
         unsigned long start = millis();
-        while (!done && (millis() - start) < (unsigned long)MQTT_TEST_TIMEOUT_MS) {
+        while (!state.done && (millis() - start) < (unsigned long)MQTT_TEST_TIMEOUT_MS) {
             delay(20);
         }
 
+        bool ok = state.ok;
+        esp_mqtt_client_stop(client);
+        esp_mqtt_client_destroy(client);
+
         if (ok) {
-            probe.disconnect();
             errOut = "";
             return true;
         }
-        probe.forceStop();
         errOut = String("MQTT WSS connect failed to ") + uri +
                  " — check host/path/Cloudflare tunnel → Mosquitto WS (host :9002 → :9001)";
         return false;

@@ -73,9 +73,9 @@
 // ---------------------------------------------------------
 // MQTT (host/port/credentials live in Preferences via SoftAP)
 // ---------------------------------------------------------
-// Cloud mode uses MQTT over WebSocket Secure (WSS) via PsychicMqttClient
-// (e.g. Cloudflare Tunnel → Mosquitto :9001). Pulls in mbedTLS — large flash.
-// Set to 0 for local-only builds (PubSubClient TCP 1883 only).
+// Cloud mode uses MQTT over WebSocket Secure (WSS) via ESP-IDF esp_mqtt
+// (built into ESP32 Arduino core — no extra Library Manager package).
+// Local Mosquitto on 1883 works with PubSubClient when cloud is off.
 #ifndef MQTT_ENABLE_CLOUD_WSS
 #ifdef MQTT_ENABLE_TLS
 #define MQTT_ENABLE_CLOUD_WSS     MQTT_ENABLE_TLS

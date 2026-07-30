@@ -3,11 +3,16 @@
 #include "DeviceInfo.h"
 #include "ProvisioningStore.h"
 #include <ArduinoJson.h>
+#if MQTT_ENABLE_CLOUD_WSS
+#include "esp_crt_bundle.h"
+#endif
 
 MqttClient::MqttClient()
     : _mqttClient(_wifiClient),
 #if MQTT_ENABLE_CLOUD_WSS
-      _psychicStarted(false),
+      _espClient(nullptr),
+      _espStarted(false),
+      _espConnected(false),
 #endif
       _lastReconnectAttempt(0),
       _port(0),
@@ -30,22 +35,88 @@ String MqttClient::buildWssUri() const {
     return String("wss://") + _host + ":" + String(_port) + path;
 }
 
+void MqttClient::espMqttEventThunk(void *handler_args, esp_event_base_t /*base*/,
+                                   int32_t event_id, void *event_data) {
+    auto *self = static_cast<MqttClient *>(handler_args);
+    self->onEspMqttEvent(event_id, static_cast<esp_mqtt_event_handle_t>(event_data));
+}
+
+void MqttClient::onEspMqttEvent(int32_t event_id, esp_mqtt_event_handle_t event) {
+    switch (event_id) {
+    case MQTT_EVENT_CONNECTED:
+        _espConnected = true;
+        Serial.print(F("MQTT connected to "));
+        Serial.println(_wssUri);
+        esp_mqtt_client_publish(_espClient, _statusTopic.c_str(), "{\"online\":true}", 0, 1, 1);
+        break;
+    case MQTT_EVENT_DISCONNECTED:
+        _espConnected = false;
+        Serial.println(F("MQTT WSS disconnected"));
+        break;
+    case MQTT_EVENT_ERROR:
+        _espConnected = false;
+        Serial.println(F("MQTT WSS error (broker down, TLS, or tunnel?)"));
+        break;
+    default:
+        break;
+    }
+}
+
 void MqttClient::configureCloudWss() {
     _wssUri = buildWssUri();
-    _psychic.setServer(_wssUri.c_str());
-    _psychic.setClientId(MQTT_CLIENT_ID);
-    _psychic.setKeepAlive(60);
-    _psychic.setCleanSession(true);
-    _psychic.setAutoReconnect(true);
-    _psychic.setBufferSize(1024);
-    // Validate against Arduino CA bundle (Cloudflare / Let's Encrypt).
-    _psychic.attachArduinoCACertBundle(true);
-    if (_user.length() > 0) {
-        _psychic.setCredentials(_user.c_str(), _pass.length() ? _pass.c_str() : nullptr);
-    } else {
-        _psychic.setCredentials(nullptr, nullptr);
+}
+
+void MqttClient::stopEspMqtt() {
+    if (_espClient) {
+        esp_mqtt_client_stop(_espClient);
+        esp_mqtt_client_destroy(_espClient);
+        _espClient = nullptr;
     }
-    _psychic.setWill(_statusTopic.c_str(), 1, true, _willMessage.c_str());
+    _espStarted = false;
+    _espConnected = false;
+}
+
+void MqttClient::startEspMqtt() {
+    stopEspMqtt();
+    configureCloudWss();
+
+    esp_mqtt_client_config_t cfg = {};
+    cfg.broker.address.uri = _wssUri.c_str();
+    // Arduino / ESP-IDF CA bundle (Cloudflare, Let's Encrypt, etc.)
+    cfg.broker.verification.crt_bundle_attach = esp_crt_bundle_attach;
+    cfg.credentials.client_id = MQTT_CLIENT_ID;
+    if (_user.length() > 0) {
+        cfg.credentials.username = _user.c_str();
+        if (_pass.length() > 0) {
+            cfg.credentials.authentication.password = _pass.c_str();
+        }
+    }
+    cfg.session.keepalive = 60;
+    cfg.session.disable_clean_session = false;
+    cfg.session.last_will.topic = _statusTopic.c_str();
+    cfg.session.last_will.msg = _willMessage.c_str();
+    cfg.session.last_will.msg_len = _willMessage.length();
+    cfg.session.last_will.qos = 1;
+    cfg.session.last_will.retain = true;
+    cfg.network.disable_auto_reconnect = false;
+    cfg.buffer.size = 1024;
+
+    _espClient = esp_mqtt_client_init(&cfg);
+    if (!_espClient) {
+        Serial.println(F("MQTT WSS init failed"));
+        return;
+    }
+    esp_mqtt_client_register_event(_espClient, MQTT_EVENT_ANY, espMqttEventThunk, this);
+    esp_err_t err = esp_mqtt_client_start(_espClient);
+    if (err != ESP_OK) {
+        Serial.print(F("MQTT WSS start failed: "));
+        Serial.println((int)err);
+        stopEspMqtt();
+        return;
+    }
+    _espStarted = true;
+    Serial.print(F("MQTT WSS connecting → "));
+    Serial.println(_wssUri);
 }
 #endif
 
@@ -81,8 +152,8 @@ bool MqttClient::begin() {
     if (_tls) {
         configureCloudWss();
         Serial.print(F("MQTT configured → "));
-        Serial.print(buildWssUri());
-        Serial.println(F(" (WSS)"));
+        Serial.print(_wssUri);
+        Serial.println(F(" (WSS / esp_mqtt)"));
         return true;
     }
 #endif
@@ -101,7 +172,7 @@ bool MqttClient::isConnected() {
     }
 #if MQTT_ENABLE_CLOUD_WSS
     if (_tls) {
-        return _psychic.connected();
+        return _espConnected;
     }
 #endif
     return _mqttClient.connected();
@@ -114,25 +185,13 @@ void MqttClient::ensureConnected() {
 
 #if MQTT_ENABLE_CLOUD_WSS
     if (_tls) {
-        if (!_psychicStarted) {
+        if (!_espStarted) {
             unsigned long now = millis();
             if (now - _lastReconnectAttempt < MQTT_RETRY_INTERVAL_MS && _lastReconnectAttempt != 0) {
                 return;
             }
             _lastReconnectAttempt = now;
-            configureCloudWss();
-            _psychic.onConnect([this](bool) {
-                Serial.print(F("MQTT connected to "));
-                Serial.println(buildWssUri());
-                _psychic.publish(_statusTopic.c_str(), 1, true, "{\"online\":true}");
-            });
-            _psychic.onError([](esp_mqtt_error_codes_t) {
-                Serial.println(F("MQTT WSS error (broker down, TLS, or tunnel?)"));
-            });
-            _psychic.connect();
-            _psychicStarted = true;
-            Serial.print(F("MQTT WSS connecting → "));
-            Serial.println(buildWssUri());
+            startEspMqtt();
         }
         return;
     }
@@ -205,7 +264,7 @@ bool MqttClient::publishReading(const SensorReading &reading, float targetTemp, 
 
 #if MQTT_ENABLE_CLOUD_WSS
     if (_tls) {
-        return _psychic.publish(_sensorTopic.c_str(), 0, false, payload, (int)len) >= 0;
+        return esp_mqtt_client_publish(_espClient, _sensorTopic.c_str(), payload, (int)len, 0, 0) >= 0;
     }
 #endif
     return _mqttClient.publish(_sensorTopic.c_str(), payload, len);
