@@ -1,0 +1,14 @@
+# Forces a large app partition so SoftAP + NimBLE + MQTT WSS fit.
+# Arduino IDE 2: open this sketch folder; Tools → Partition Scheme should show Huge APP.
+# If Verify still says Maximum is 1310720, set manually:
+#   Tools → Board → ESP32 Dev Module
+#   Tools → Flash Size → 4MB (32Mb)
+#   Tools → Partition Scheme → Huge APP (3MB No OTA/1MB SPIFFS)
+
+default_fqbn: esp32:esp32:esp32:UploadSpeed=921600,CPUFreq=240,FlashFreq=80,FlashMode=qio,FlashSize=4M,PartitionScheme=huge_app,DebugLevel=none,PSRAM=disabled
+
+profiles:
+  growos:
+    fqbn: esp32:esp32:esp32:UploadSpeed=921600,CPUFreq=240,FlashFreq=80,FlashMode=qio,FlashSize=4M,PartitionScheme=huge_app,DebugLevel=none,PSRAM=disabled
+    platforms:
+      - platform: esp32:esp32

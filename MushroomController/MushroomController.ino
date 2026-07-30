@@ -1,4 +1,16 @@
 #include <Wire.h>
+/*
+ * GrowOS / MushroomController
+ *
+ * REQUIRED Arduino IDE board settings (or Verify fails with "Sketch too big"):
+ *   Tools → Board → ESP32 Dev Module
+ *   Tools → Flash Size → 4MB (32Mb)
+ *   Tools → Partition Scheme → Huge APP (3MB No OTA/1MB SPIFFS)
+ *
+ * Default partition is only ~1.31MB. This sketch is ~1.4–1.5MB (WiFi+BLE+MQTT).
+ * With Huge APP, Maximum becomes ~3MB and the sketch fits (~45–50% used).
+ */
+
 #include "Config.h"
 #include "Sensor.h"
 #include "Display.h"
