@@ -85,6 +85,34 @@ static void printOledMirror(const SensorReading &reading, NetDisplayState netSta
         Serial.print(bleSensor.deviceName());
     }
     Serial.println();
+
+    Serial.print(F("Relays: "));
+    if (statusOutputs.isTestCycleMode()) {
+        Serial.print(F("[TEST MODE] "));
+        if (statusOutputs.testPhase() == StatusOutputs::TestCyclePhase::OnPhase) {
+            if (statusOutputs.isTestBlockedByHumidity()) {
+                Serial.print(F("ON-window (PAUSED: Humidity >= 95%)"));
+            } else {
+                Serial.print(F("ON-window (BOTH RELAYS ACTIVE)"));
+            }
+        } else {
+            Serial.print(F("OFF-window (RELAYS OFF)"));
+        }
+        Serial.print(F(" rem:"));
+        Serial.print(statusOutputs.testPhaseRemainingMs() / 1000);
+        Serial.print(F("s"));
+    } else {
+        Serial.print(F("Humidifier:"));
+        Serial.print(statusOutputs.isHumidifierOn() ? F("ON") : F("OFF"));
+        Serial.print(F("  Fan:"));
+        Serial.print(statusOutputs.isFanOn() ? F("ON") : F("OFF"));
+        if (statusOutputs.isResting()) {
+            Serial.print(F("  [REST: "));
+            Serial.print(statusOutputs.restRemainingMs() / 1000);
+            Serial.print(F("s rem]"));
+        }
+    }
+    Serial.println();
     Serial.println(F("--------------------------------"));
 }
 
@@ -150,6 +178,9 @@ void loop() {
     if (growNetworkManager.isConnected()) {
         mqttClient.ensureConnected();
     }
+
+    // Advance fan lag timers and write relay states on every loop iteration
+    statusOutputs.loop();
 
     unsigned long now = millis();
     if (now - lastSensorMs < SENSOR_READ_INTERVAL_MS) {

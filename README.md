@@ -28,7 +28,7 @@ Sketch folder: `MushroomController/` (Arduino requires folder name = `.ino` name
 | `GrowNetworkManager.h` / `.cpp` | SoftAP two-step portal (WiFi → MQTT), tests, reconnect |
 | `MqttClient.h` / `.cpp` | Broker connect (plain, or TLS when enabled), LWT/birth, publish JSON |
 | `BleSensor.h` / `.cpp` | BLE GATT advertise + notify live T/H (**NimBLE required**) |
-| `StatusOutputs.h` / `.cpp` | Green/red climate LEDs (GPIO 12/13); helpers for future relays |
+| `StatusOutputs.h` / `.cpp` | Climate LEDs (GPIO 12–15) + 2-channel relay control (humidifier GPIO 25, fan GPIO 26) |
 | `Sensor` / `Display` / `DeviceInfo` / `Icons` | Sensor, OLED, payload metadata |
 
 ## Status LEDs (4 LEDs)
@@ -45,16 +45,55 @@ Wiring each LED (active HIGH): `GPIO → 220Ω–1kΩ resistor → LED anode`, c
 
 **GPIO 12 is a strapping pin** — do not leave it pulled HIGH at boot.
 
-### Future humidifier / cooler (same logic, not LEDs)
+## 2-channel relay (Humidifier + Fan)
 
-Yes — you can reuse this control path later. Do **not** connect a humidifier
-mains wire to the ESP. Use a **relay module** (or SSR) with optocoupler/transistor:
+Controls a standard 2-channel 5V relay module with optocoupler inputs:
+- **Humidifier (IN1):** starts when relative humidity is **< 92.0%** (`HUMIDIFIER_ON_BELOW_PCT`), and shuts OFF immediately when humidity reaches **≥ 95.0%** (`HUMIDIFIER_OFF_ABOVE_PCT`).
+- **Exhaust Fan (IN2):** starts **5 seconds** (`FAN_LAG_AFTER_HUMIDIFIER_MS`) after the humidifier starts (only if humidifier is still ON), and stops **5 seconds** after the humidifier stops (to evacuate residual mist from the grow room).
+- **3-Hour Run Limit & 30-Min Rest Cooldown:** To prevent device burnout and excessive continuous operation, if the humidifier runs continuously for **3 hours** (`HUMIDIFIER_MAX_CONTINUOUS_RUN_MS`) without reaching 95%, it automatically force-stops and enters a mandatory **30-minute rest cooldown** (`HUMIDIFIER_REST_INTERVAL_MS`). During this rest window, the humidifier remains OFF regardless of humidity readings.
+- **Failsafe:** If the SHT31 sensor read fails or is invalid, both humidifier and fan relays turn OFF immediately.
 
-- `needsHumidifier()` is true when humidity is **below** the ideal band → relay ON  
-- `needsCooling()` is true when temperature is **above** the ideal band → cooler/exhaust ON  
+### Test Cycle Mode (Testing vs Production)
 
-Next firmware step would add dedicated relay pins driven from those flags, with a
-failsafe OFF when the sensor read fails.
+For bench testing and verifying relay hardware, the firmware includes an alternating test mode:
+- **Test Mode Active (`RELAY_TEST_CYCLE_MODE true` in `Config.h`):** Alternates turning both the Humidifier and Fan **ON for 30 minutes** (`RELAY_TEST_ON_DURATION_MS`), then **OFF for 30 minutes** (`RELAY_TEST_OFF_DURATION_MS`).
+- **$\ge$ 95% Safety Cutoff:** During the ON window, if humidity is $\ge 95.0\%$ (`HUMIDIFIER_OFF_ABOVE_PCT`), the relays **will NOT start** (or will shut OFF immediately if already running) to prevent room oversaturation. As soon as humidity drops $< 95.0\%$, the relays turn back ON for the remainder of the scheduled ON window.
+- **Switching to Production:** Change `#define RELAY_TEST_CYCLE_MODE false` in `Config.h` to use standard automatic humidity thresholds ($<92\%$ ON, $\ge 95\%$ OFF, 5s fan lag, 3hr run limit).
+
+### Pin wiring
+
+> [!WARNING]
+> **Do not reuse LED pins (GPIO 12–15) or I2C pins (GPIO 21/22).**  
+> **Never connect AC mains lines directly to the ESP32.** Mains load wiring connects strictly to the isolated relay `COM` / `NO` terminal screw blocks.
+
+| ESP32 Pin | Relay Module Pin | Function | Notes |
+|---|---|---|---|
+| **GND** | **GND** | Ground reference | Common ground |
+| **5V (VIN)** | **VCC** | Relay module coil power | Module coils require 5V; ESP32 3.3V GPIO triggers the optocoupler |
+| **GPIO 25** | **IN1** | Humidifier trigger | Boot-safe output; drives humidifier relay |
+| **GPIO 26** | **IN2** | Fan trigger | Boot-safe output; drives fan relay |
+
+### Active-LOW trigger logic
+
+Typical relay modules are **active LOW** (pulling IN to LOW energizes the coil). This is controlled by `#define RELAY_ACTIVE_LOW 1` in `Config.h`. If your relay board uses active-HIGH logic, set `RELAY_ACTIVE_LOW` to `0`.
+
+Pins are driven HIGH before `pinMode(..., OUTPUT)` is initialized at boot to prevent any unwanted relay clicks or energizing during power-on.
+
+### Tunables (`Config.h`)
+
+| Constant | Default | Description |
+|---|---|---|
+| `RELAY_TEST_CYCLE_MODE` | `true` | `true` = 30min ON/OFF test cycle; `false` = production threshold mode |
+| `RELAY_TEST_ON_DURATION_MS` | `1800000` (30m) | Duration for test ON window (variable, tunable to any ms) |
+| `RELAY_TEST_OFF_DURATION_MS` | `1800000` (30m) | Duration for test OFF window (variable, tunable to any ms) |
+| `HUMIDIFIER_RELAY_PIN` | `25` | GPIO driving relay IN1 (Humidifier) |
+| `FAN_RELAY_PIN` | `26` | GPIO driving relay IN2 (Fan) |
+| `RELAY_ACTIVE_LOW` | `1` | `1` for active LOW modules, `0` for active HIGH |
+| `HUMIDIFIER_ON_BELOW_PCT` | `92.0f` | Humidity threshold (% RH) below which humidifier turns ON (prod mode) |
+| `HUMIDIFIER_OFF_ABOVE_PCT` | `95.0f` | Humidity threshold (% RH) at/above which humidifier turns OFF / safety pause |
+| `FAN_LAG_AFTER_HUMIDIFIER_MS` | `5000` | Start lag & stop lag for fan in prod mode (ms) |
+| `HUMIDIFIER_MAX_CONTINUOUS_RUN_MS` | `10800000` | Max continuous run limit before mandatory rest in prod mode (3 hours) |
+| `HUMIDIFIER_REST_INTERVAL_MS` | `1800000` | Mandatory rest cooldown duration in prod mode (30 minutes) |
 
 ## SoftAP provisioning (WiFi + MQTT)
 
@@ -196,7 +235,8 @@ no PsychicMqttClient or other third-party MQTT-WSS library.
 
 ## Not built yet
 
-- MQTT commands / humidifier–cooler relays (LED logic is ready via `StatusOutputs`)
+- Cooler / exhaust relay control (temperature cooling relay)
+- MQTT commands / remote relay overrides
 - Runtime target changes over MQTT
 - OTA
 - Cloud WSS CA pinning (currently ESP-IDF CA bundle)

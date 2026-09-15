@@ -11,9 +11,15 @@ bool Sensor::begin() {
 
 SensorReading Sensor::read() {
     SensorReading reading;
-    reading.temperature = _sht31.readTemperature();
-    reading.humidity    = _sht31.readHumidity();
-    reading.valid        = !isnan(reading.temperature) && !isnan(reading.humidity);
+    for (int attempt = 0; attempt < 3; attempt++) {
+        reading.temperature = _sht31.readTemperature();
+        reading.humidity    = _sht31.readHumidity();
+        reading.valid       = !isnan(reading.temperature) && !isnan(reading.humidity);
+        if (reading.valid) {
+            break;
+        }
+        delay(20);
+    }
     return reading;
 }
 
